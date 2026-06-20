@@ -24,6 +24,18 @@ const asString = (value) => {
   return String(value);
 };
 
+/** Build category_tags from an explicit array or the scraped category string. */
+function deriveCategoryTags(raw) {
+  if (Array.isArray(raw.categoryTags) && raw.categoryTags.length) return raw.categoryTags;
+  if (raw.category) {
+    return String(raw.category)
+      .split(/[,/>]/)
+      .map((c) => c.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
 /**
  * Map a single raw scraped product to normalised DB entities.
  * @returns {{ store, phoneModel, phone, listing }}
@@ -44,7 +56,7 @@ function transformProduct(raw, context = {}) {
     phoneModel: {
       brand,
       model_name: modelName,
-      category_tags: Array.isArray(raw.categoryTags) ? raw.categoryTags : [],
+      category_tags: deriveCategoryTags(raw),
       image_url: raw.imageUrl || null,
       release_year: Number.isInteger(raw.releaseYear) ? raw.releaseYear : null,
     },

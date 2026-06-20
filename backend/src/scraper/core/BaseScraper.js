@@ -1,62 +1,19 @@
 // ─────────────────────────────────────────────────────────────
-//  BaseScraper — shared framework for ALL store scrapers.
+//  BaseScraper — framework for stores scraped from rendered HTML
+//  with a real browser (Playwright).
 //
-//  Every store extends this class and only implements the
-//  store-specific selector logic (getProductLinks / parseProduct).
-//  Cross-cutting concerns live here and are shared by every store:
-//    • browser lifecycle (via Browser)
-//    • retries with backoff + per-navigation timeouts
-//    • polite rate-limiting delays
-//    • structured logging
-//    • crash-safety (a single bad product never aborts the run)
+//  Stores extend this class and only implement the store-specific
+//  selector logic (getProductLinks / parseProduct). Browser
+//  lifecycle, retries, timeouts, rate-limiting and crash-safety
+//  are handled here; the canonical product shape, de-duplication,
+//  result building and disk persistence are inherited from
+//  AbstractScraper.
 // ─────────────────────────────────────────────────────────────
-const fs = require('fs');
-const path = require('path');
-
-const config = require('../../config/env');
-const logger = require('../../utils/logger');
+const AbstractScraper = require('./AbstractScraper');
 const Browser = require('./Browser');
 const { withRetry } = require('../../utils/retry');
-const { delay } = require('../../utils/delay');
-const parsers = require('../../utils/parsers');
 
-class BaseScraper {
-  constructor(scraperConfig = {}) {
-    this.storeName = scraperConfig.storeName || 'Unknown Store';
-    this.storeUrl = scraperConfig.storeUrl || '';
-    this.listPages = scraperConfig.listPages || [];
-
-    // Operational knobs default to the global config but can be
-    // overridden per store.
-    this.delayMs = scraperConfig.delayMs ?? config.scraper.delayMs;
-    this.maxPages = scraperConfig.maxPages ?? config.scraper.maxPages;
-    this.headless = scraperConfig.headless ?? config.scraper.headless;
-    this.navigationTimeoutMs =
-      scraperConfig.navigationTimeoutMs ?? config.scraper.navigationTimeoutMs;
-    this.maxRetries = scraperConfig.maxRetries ?? config.scraper.maxRetries;
-    this.retryBaseDelayMs =
-      scraperConfig.retryBaseDelayMs ?? config.scraper.retryBaseDelayMs;
-
-    this.log = logger.child({ scope: this.storeName });
-
-    this.results = [];
-    this.errors = [];
-    this.skipped = 0;
-  }
-
-  // ── Shared parsing helpers (delegate to reusable utils) ──────
-  cleanPrice(raw) {
-    return parsers.cleanPrice(raw);
-  }
-
-  cleanText(raw) {
-    return parsers.cleanText(raw);
-  }
-
-  delay(ms) {
-    return delay(ms);
-  }
-
+class BaseScraper extends AbstractScraper {
   /**
    * Navigate to a URL with a bounded timeout and automatic retries.
    * Centralised so every store gets identical resilience.
@@ -116,6 +73,8 @@ class BaseScraper {
           await this.delay(1000);
 
           const links = await this.getProductLinks(page, currentUrl);
+          // Stop paginating once a page yields no products.
+          if (links.length === 0) break;
           links.forEach((link) => urls.add(link));
           this.log.info(`  Page ${pageNum}: +${links.length} products (total ${urls.size})`);
 
@@ -126,7 +85,7 @@ class BaseScraper {
           this.log.error(`Failed crawling page ${pageNum} of ${categoryUrl}`, {
             error: err.message,
           });
-          this.errors.push({ url: currentUrl, stage: 'listing', error: err.message });
+          this.recordError(currentUrl, 'listing', err.message);
           break;
         }
       }
@@ -155,15 +114,16 @@ class BaseScraper {
           continue;
         }
 
-        data.scrapedAt = new Date().toISOString();
-        data.store = this.storeName;
-        data.storeUrl = this.storeUrl;
-        this.results.push(data);
-        this.log.info(`  [${count}/${productUrls.length}] ✓ ${data.name}`, { price: data.price });
+        const product = this.addProduct({ ...data, productUrl });
+        if (product) {
+          this.log.info(`  [${count}/${productUrls.length}] ✓ ${product.name}`, {
+            price: product.price,
+          });
+        }
       } catch (err) {
         // A single failing product must never crash the whole run.
         this.skipped += 1;
-        this.errors.push({ url: productUrl, stage: 'product', error: err.message });
+        this.recordError(productUrl, 'product', err.message);
         this.log.error(`  [${count}/${productUrls.length}] failed`, {
           productUrl,
           error: err.message,
@@ -200,41 +160,6 @@ class BaseScraper {
     });
 
     return this.toResult(durationMs);
-  }
-
-  // ── Structured result object ─────────────────────────────────
-  toResult(durationMs) {
-    return {
-      store: this.storeName,
-      storeUrl: this.storeUrl,
-      scrapedAt: new Date().toISOString(),
-      durationMs,
-      totalFound: this.results.length,
-      totalErrors: this.errors.length,
-      totalSkipped: this.skipped,
-      products: this.results,
-      errors: this.errors,
-    };
-  }
-
-  // ── Optional disk persistence ────────────────────────────────
-  saveToJson(outputDir = config.scraper.outputDir) {
-    if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
-
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const slug = this.storeName.toLowerCase().replace(/\s+/g, '-');
-
-    const dataFile = path.join(outputDir, `${slug}-${timestamp}.json`);
-    fs.writeFileSync(dataFile, JSON.stringify(this.toResult(), null, 2), 'utf8');
-
-    if (this.errors.length > 0) {
-      const errorFile = path.join(outputDir, `${slug}-errors-${timestamp}.json`);
-      fs.writeFileSync(errorFile, JSON.stringify(this.errors, null, 2), 'utf8');
-      this.log.info(`Error log saved: ${errorFile}`);
-    }
-
-    this.log.info(`Results saved: ${dataFile}`);
-    return dataFile;
   }
 }
 

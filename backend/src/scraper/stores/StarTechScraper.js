@@ -7,13 +7,7 @@
 //  the shared parsers util.
 // ─────────────────────────────────────────────────────────────
 const BaseScraper = require('../core/BaseScraper');
-const {
-  cleanPrice,
-  findInTable,
-  findInProse,
-  firstInt,
-  flattenSpecs,
-} = require('../../utils/parsers');
+const { cleanPrice, extractKeySpecs } = require('../../utils/parsers');
 
 const JUNK_SPEC_KEYS = new Set([
   'view more info', 'see more', 'read more', 'specification', 'value',
@@ -131,17 +125,20 @@ class StarTechScraper extends BaseScraper {
     });
 
     const specs = await this.parseSpecifications(page);
-    const keySpecs = this.extractKeySpecs(specs, name, descriptionText);
+    const keySpecs = extractKeySpecs(specs, name, descriptionText);
 
     return {
       name,
       brand,
+      category: meta['product:category'] || 'Mobile Phone',
       productUrl,
       price,
       originalPrice: originalPrice || null,
       discountAmount,
       discountPct,
       inStock,
+      stockStatus: inStock ? 'In Stock' : 'Out of Stock',
+      shortDescription: descriptionText ? descriptionText.slice(0, 500) : null,
       imageUrl,
       specs,
       keySpecs,
@@ -178,93 +175,15 @@ class StarTechScraper extends BaseScraper {
     });
 
     if (rows.length > 0) {
-      specs.Specifications = {};
       for (const { key, val } of rows) {
         if (JUNK_SPEC_KEYS.has(key.toLowerCase())) continue;
         if (val === 'true' || val === 'false') continue;
         if (val.toLowerCase().includes('view more')) continue;
-        specs.Specifications[key] = val;
+        specs[key] = val;
       }
     }
 
     return specs;
-  }
-
-  extractKeySpecs(specs, productName = '', descriptionText = '') {
-    const flat = flattenSpecs(specs);
-    const prose = `${descriptionText} ${productName}`.toLowerCase();
-
-    const ram = firstInt(
-      findInTable(flat, ['RAM', 'Memory']) ||
-        findInProse(prose, [
-          /(\d+)\s*gb\s*(?:of\s*)?ram/i,
-          /ram[:\s]+(\d+)\s*gb/i,
-          /(\d+)\s*gb\s*lpddr/i,
-        ])
-    );
-
-    const storage = firstInt(
-      findInTable(flat, ['Storage', 'Internal Storage', 'ROM']) ||
-        findInProse(prose, [
-          /(\d+)\s*gb\s*(?:internal\s*)?storage/i,
-          /storage[:\s]+(\d+)\s*gb/i,
-          /(\d+)\s*gb\s*(?:internal|flash|emmc|ufs)/i,
-        ])
-    );
-
-    const chipset =
-      findInTable(flat, ['Chipset', 'Processor', 'CPU', 'SoC']) ||
-      findInProse(prose, [
-        /(snapdragon[\s\w\d]+?(?=\s*(?:chip|process|with|,|\.|5nm|4nm|7nm|\d+\s*gb)))/i,
-        /(exynos[\s\d]+)/i,
-        /(dimensity[\s\d]+)/i,
-        /(mediatek[\s\w]+?(?=\s*chip|\s*process|\s*with|,|\.))/i,
-        /(helio[\s\w\d]+)/i,
-        /(a\d+\s*bionic)/i,
-        /(apple\s+m\d[\w\s]*chip)/i,
-      ]);
-
-    const battery =
-      findInTable(flat, ['Battery', 'Battery Capacity']) ||
-      findInProse(prose, [/(\d{3,5}\s*mah)/i, /battery[:\s]+(\d{3,5}\s*mah)/i]);
-
-    const display =
-      findInTable(flat, ['Display', 'Screen Size', 'Screen']) ||
-      findInProse(prose, [
-        /(\d+\.\d+[-\s]inch[\w\s+]*?(?=\s*display|\s*screen|\s*with|,|\.))/i,
-        /(\d+\.\d+["'″]\s*[\w\s+]*?(?:amoled|lcd|oled|ips|tft))/i,
-      ]);
-
-    const camera =
-      findInTable(flat, ['Main Camera', 'Rear Camera', 'Camera']) ||
-      findInProse(prose, [
-        /(?:rear|main|triple|quad|dual)\s*camera[^.]*?(\d+mp[\w\s+\d]*)/i,
-        /(\d+mp\s*\+\s*\d+mp(?:\s*\+\s*\d+mp)*)/i,
-        /(\d+\s*mp\s*(?:main|wide|primary))/i,
-      ]);
-
-    const os =
-      findInTable(flat, ['OS', 'Operating System']) ||
-      findInProse(prose, [
-        /(android\s*\d+(?:\.\d+)?)/i,
-        /(ios\s*\d+(?:\.\d+)?)/i,
-        /(one\s*ui\s*\d+(?:\.\d+)?)/i,
-      ]);
-
-    const network =
-      findInTable(flat, ['Network', 'Connectivity']) ||
-      findInProse(prose, [/\b(5g)\b/i, /\b(4g\s*lte)\b/i, /\b(4g)\b/i, /\b(3g)\b/i, /\b(2g)\b/i]);
-
-    return {
-      ram: ram ?? null,
-      storage: storage ?? null,
-      chipset: chipset ? chipset.trim() : null,
-      battery: battery ? battery.trim() : null,
-      display: display ? display.trim() : null,
-      camera: camera ? camera.trim() : null,
-      os: os ? os.trim() : null,
-      network: network ? network.toUpperCase() : null,
-    };
   }
 }
 
