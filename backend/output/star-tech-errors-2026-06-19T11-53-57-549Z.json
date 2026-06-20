@@ -1,0 +1,10 @@
+[
+  {
+    "url": "https://www.startech.com.bd/xtra-x40",
+    "error": "page.goto: Timeout 45000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://www.startech.com.bd/xtra-x40\", waiting until \"networkidle\"\u001b[22m\n"
+  },
+  {
+    "url": "https://www.startech.com.bd/symphony-a21",
+    "error": "page.goto: Timeout 45000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://www.startech.com.bd/symphony-a21\", waiting until \"networkidle\"\u001b[22m\n"
+  }
+]

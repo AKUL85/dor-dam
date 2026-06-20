@@ -1,0 +1,67 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  
+}
+
+// TIER A: Static Specs (Slow change)
+model PhoneModel {
+  id            String   @id @default(uuid())
+  brand         String
+  model_name    String
+  category_tags String[]
+  image_url     String?
+  release_year  Int?
+  variants      Phone[]
+}
+
+model Phone {
+  id             String    @id @default(uuid())
+  model_id       String
+  model          PhoneModel @relation(fields: [model_id], references: [id])
+  market_version String    // official, unofficial, global
+  ram            String
+  storage        String
+  chipset        String
+  battery        String
+  camera         String
+  variant_key    String    @unique // brand+model+version+ram+storage
+  listings       Listing[]
+}
+
+// TIER B: Market Data (Every 6 hours)
+model Store {
+  id              String         @id @default(uuid())
+  name            String
+  url             String
+  trust_score     Float          @default(5.0)
+  warranty_policy String?
+  listings        Listing[]
+  ratings         StoreRating[]
+}
+
+model StoreRating {
+  id           String   @id @default(uuid())
+  store_id     String
+  store        Store    @relation(fields: [store_id], references: [id])
+  source       String   // google, fb, daraz
+  rating       Float
+  review_count Int
+  fetched_at   DateTime @default(now())
+}
+
+model Listing {
+  id               String   @id @default(uuid())
+  phone_id         String
+  phone            Phone    @relation(fields: [phone_id], references: [id])
+  store_id         String
+  store            Store    @relation(fields: [store_id], references: [id])
+  price            Float
+  original_price   Float?
+  in_stock         Boolean  @default(true)
+  product_url      String
+  scraped_at       DateTime @default(now())
+}
