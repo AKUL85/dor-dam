@@ -4,11 +4,22 @@
 //  duplicated across modules.
 // ─────────────────────────────────────────────────────────────
 
-/** Strip non-digits from a price string and return an integer (or null). */
+/**
+ * Parse a price string into an integer number of taka.
+ * Handles currency symbols, thousands separators and decimal cents
+ * (e.g. "BDT. 59,999.00" -> 59999, NOT 5999900).
+ */
 function cleanPrice(raw) {
   if (raw === null || raw === undefined) return null;
-  const cleaned = String(raw).replace(/[^\d]/g, '');
-  return cleaned ? parseInt(cleaned, 10) : null;
+  // Commas are thousands separators in this locale — drop them first so the
+  // remaining string contains only the number and a possible decimal point.
+  const noCommas = String(raw).replace(/,/g, '');
+  // Grab the first number (with an optional decimal part). This naturally
+  // ignores currency prefixes like "BDT." / "৳" / "Tk" and trailing cents.
+  const match = noCommas.match(/\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const value = parseFloat(match[0]);
+  return Number.isFinite(value) ? Math.round(value) : null;
 }
 
 /** Collapse whitespace and trim. */
@@ -25,13 +36,40 @@ function firstInt(raw) {
 }
 
 /**
+ * True when `keyword` appears in `key` as a whole word (case-insensitive).
+ * Whole-word matching avoids false hits from short keywords being contained
+ * in unrelated keys (e.g. "OS" inside "Positioning").
+ */
+function keyHasKeyword(key, keyword) {
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`\\b${escaped}\\b`, 'i').test(String(key));
+}
+
+/**
  * Look up the first value in a flat key/value object whose key contains
- * any of the provided keywords (case-insensitive).
+ * any of the provided keywords as a whole word (case-insensitive).
  */
 function findInTable(flat, keywords) {
   for (const kw of keywords) {
     for (const [k, v] of Object.entries(flat)) {
-      if (k.toLowerCase().includes(kw.toLowerCase())) return String(v).trim();
+      if (keyHasKeyword(k, kw)) return String(v).trim();
+    }
+  }
+  return null;
+}
+
+/**
+ * Like findInTable, but only accepts a value that also matches `valueRegex`.
+ * Lets callers require, e.g., a camera cell to actually contain a megapixel
+ * figure so unrelated cells (or values from the wrong section) are skipped.
+ */
+function findInTableMatching(flat, keywords, valueRegex) {
+  for (const kw of keywords) {
+    for (const [k, v] of Object.entries(flat)) {
+      if (!keyHasKeyword(k, kw)) continue;
+      const value = String(v).trim();
+      const m = value.match(valueRegex);
+      if (m) return (m[1] ? m[1] : value).trim();
     }
   }
   return null;
@@ -140,9 +178,11 @@ function extractKeySpecs(specs, productName = '', descriptionText = '') {
       /(apple\s+m\d[\w\s]*chip)/i,
     ]);
 
+  // Prefer the actual mAh capacity (found anywhere in the table values or
+  // prose) over a "Battery type" cell that only holds the chemistry.
   const battery =
-    findInTable(flat, ['Battery', 'Battery Capacity']) ||
-    findInProse(prose, [/(\d{3,5}\s*mah)/i, /battery[:\s]+(\d{3,5}\s*mah)/i]);
+    findInProse(blob, [/(\d{3,5}\s*mah)/i]) ||
+    findInTable(flat, ['Battery Capacity', 'Capacity', 'Battery']);
 
   const display =
     findInTable(flat, ['Display', 'Screen Size', 'Screen', 'Size']) ||
@@ -151,11 +191,17 @@ function extractKeySpecs(specs, productName = '', descriptionText = '') {
       /(\d+\.\d+["'″]\s*[\w\s+]*?(?:amoled|lcd|oled|ips|tft))/i,
     ]);
 
+  // A camera value is only useful if it carries a megapixel figure. Restrict
+  // the search to camera-labelled cells (so the "MP" core-count of a GPU like
+  // "Mali-G715 MP7" is never mistaken for a camera), then fall back to prose.
   const camera =
-    findInTable(flat, ['Main Camera', 'Rear Camera', 'Camera']) ||
+    findInTableMatching(
+      flat,
+      ['Main Camera', 'Rear Camera', 'Primary Camera', 'Camera Resolution', 'Camera'],
+      /(\d+\s*mp(?:\s*\+\s*\d+\s*mp)*)/i
+    ) ||
     findInProse(prose, [
-      /(?:rear|main|triple|quad|dual)\s*camera[^.]*?(\d+mp[\w\s+\d]*)/i,
-      /(\d+mp\s*\+\s*\d+mp(?:\s*\+\s*\d+mp)*)/i,
+      /(?:rear|main|triple|quad|dual)\s*camera[^.]*?(\d+\s*mp[\w\s+\d]*)/i,
       /(\d+\s*mp\s*(?:main|wide|primary))/i,
     ]);
 
@@ -188,6 +234,7 @@ module.exports = {
   cleanText,
   firstInt,
   findInTable,
+  findInTableMatching,
   findInProse,
   flattenSpecs,
   stripHtml,
