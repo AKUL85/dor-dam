@@ -7,12 +7,16 @@ const AppError = require('../utils/AppError');
 const StarTechScraper = require('./stores/StarTechScraper');
 const GadgetAndGearScraper = require('./stores/GadgetAndGearScraper');
 const AppleGadgetsBdScraper = require('./stores/AppleGadgetsBdScraper');
+const MobileBuzzBdScraper = require('./stores/MobileBuzzBdScraper');
+const GadgetBangladeshScraper = require('./stores/GadgetBangladeshScraper');
 
 // storeKey -> Scraper class. Adding a new website is a one-line change here.
 const SCRAPERS = {
   [StarTechScraper.storeKey]: StarTechScraper,
   [GadgetAndGearScraper.storeKey]: GadgetAndGearScraper,
   [AppleGadgetsBdScraper.storeKey]: AppleGadgetsBdScraper,
+  [MobileBuzzBdScraper.storeKey]: MobileBuzzBdScraper,
+  [GadgetBangladeshScraper.storeKey]: GadgetBangladeshScraper,
 };
 
 /** List the keys of every registered store. */
