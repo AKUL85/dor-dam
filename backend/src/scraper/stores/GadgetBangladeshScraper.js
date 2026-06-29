@@ -264,14 +264,20 @@ class GadgetBangladeshScraper extends CheerioScraper {
   // ── Listing-page extraction ─────────────────────────────────
   async getProductLinks($, url) {
     try {
-      // The static HTML does not always contain the classic
-      // WooCommerce `ul.products li.product` structure. The site
-      // renders product cards as plain anchors to `/product/<slug>/`.
-      // We collect every such anchor, then de-duplicate (the same URL
-      // often appears for the product card and for the "Quick view"
-      // button).
+      // WooCommerce product loops render as <li> with class
+      // "product" inside a `<ul.products>`. We also fall back to
+      // any anchor under `.woocommerce-loop-product__link` /
+      // `.product-thumbnail` / `.products a`, and general product links.
+      const selectors = [
+        'ul.products li.product a.woocommerce-loop-product__link',
+        'ul.products li.product .product-thumbnail a',
+        'ul.products li.product h2.woocommerce-loop-product__title a',
+        'ul.products li.product a[href*="/product/"]',
+        'a[href*="/product/"]'
+      ].join(', ');
+
       const hrefs = [];
-      $('a[href*="/product/"]').each((_, el) => {
+      $(selectors).each((_, el) => {
         const href = $(el).attr('href');
         if (href && href.includes('gadgetbangladesh.com.bd/product/')) {
           hrefs.push(href);
