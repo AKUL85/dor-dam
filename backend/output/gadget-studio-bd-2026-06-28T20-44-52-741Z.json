@@ -1,0 +1,41 @@
+{
+  "store": "Gadget Studio BD",
+  "storeUrl": "https://gadgetstudiobd.com",
+  "scrapedAt": "2026-06-28T20:44:52.741Z",
+  "totalFound": 1,
+  "totalErrors": 0,
+  "totalSkipped": 678,
+  "products": [
+    {
+      "name": "Xiaoda Fruit Washing Machine – Ionic Vegetable & Fruit Purifier for Removing Pesticide Residues, Home Kitchen Disinfection",
+      "brand": "Xiaomi",
+      "category": "Mobile Phone",
+      "productUrl": "https://gadgetstudiobd.com/product/xiaoda-fruit-washing-machine/",
+      "imageUrl": "https://gadgetstudiobd.com/wp-content/uploads/2026/02/xiaoda-fruit-washing-machine-1.webp",
+      "price": 7090,
+      "originalPrice": null,
+      "discountAmount": null,
+      "discountPct": null,
+      "inStock": false,
+      "stockStatus": "Out of Stock",
+      "shortDescription": "Ensure the safety of your family’s meals with the Xiaoda Fruit Washing Machine, a compact and powerful solution for food hygiene. Also known as the Xiaomi Portable Fruit Vegetable Cleaning Machine, this device uses cutting-edge electrolytic ion technology to degrade harmful substances in your food. Whether it’s removing pesticide residues from leafy greens or eliminating clenbuterol and antibiotics from meat, the Xiaoda Portable Fruit and Vegetable Cleaner provides deep purification without the",
+      "specs": {
+        "Brand": "Xiaomi"
+      },
+      "keySpecs": {
+        "ram": null,
+        "storage": null,
+        "chipset": null,
+        "battery": "4400mah",
+        "display": null,
+        "camera": null,
+        "os": null,
+        "network": null
+      },
+      "scrapedAt": "2026-06-28T20:34:17.889Z",
+      "store": "Gadget Studio BD",
+      "storeUrl": "https://gadgetstudiobd.com"
+    }
+  ],
+  "errors": []
+}

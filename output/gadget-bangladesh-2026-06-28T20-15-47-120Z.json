@@ -1,0 +1,39 @@
+{
+  "store": "Gadget Bangladesh",
+  "storeUrl": "https://gadgetbangladesh.com.bd",
+  "scrapedAt": "2026-06-28T20:15:47.120Z",
+  "totalFound": 1,
+  "totalErrors": 0,
+  "totalSkipped": 358,
+  "products": [
+    {
+      "name": "Nothing Ear 3 45dB Hybrid ANC True Wireless Earbuds",
+      "brand": "Nothing",
+      "category": "Mobile Phone",
+      "productUrl": "https://gadgetbangladesh.com.bd/product/nothing-ear-3-anc-earbuds/",
+      "imageUrl": "https://gadgetbangladesh.com.bd/wp-content/uploads/2026/06/Nothing-Ear-3-45dB-Hybrid-ANC-True-Wireless-Earbuds-2.webp",
+      "price": 1900,
+      "originalPrice": null,
+      "discountAmount": null,
+      "discountPct": null,
+      "inStock": false,
+      "stockStatus": "Out of Stock",
+      "shortDescription": "Home Audio Accessories Earbuds Nothing Ear 3 45dB Hybrid ANC True Wireless Earbuds JOYROOM JR-ZS433 Car Tablet Headrest Holder 1,900৳ Back to products HOCO DT1 Wireless Mini Projector 720P Smart WiFi Bluetooth Projector 9,700৳ Nothing Ear 3 45dB Hybrid ANC True Wireless Earbuds 14,900৳ Color Choose an optionBlackWhiteClear Nothing Ear 3 45dB Hybrid ANC True Wireless Earbuds quantity Add to cart Buy now Add to compare Add to wishlist Share: 13 People watching this product now! Payment Methods: De",
+      "specs": {},
+      "keySpecs": {
+        "ram": null,
+        "storage": null,
+        "chipset": null,
+        "battery": null,
+        "display": null,
+        "camera": null,
+        "os": null,
+        "network": null
+      },
+      "scrapedAt": "2026-06-28T20:15:25.099Z",
+      "store": "Gadget Bangladesh",
+      "storeUrl": "https://gadgetbangladesh.com.bd"
+    }
+  ],
+  "errors": []
+}

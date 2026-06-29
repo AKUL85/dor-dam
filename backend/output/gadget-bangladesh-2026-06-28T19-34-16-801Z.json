@@ -1,0 +1,71 @@
+{
+  "store": "Gadget Bangladesh",
+  "storeUrl": "https://gadgetbangladesh.com.bd",
+  "scrapedAt": "2026-06-28T19:34:16.801Z",
+  "totalFound": 0,
+  "totalErrors": 12,
+  "totalSkipped": 0,
+  "products": [],
+  "errors": [
+    {
+      "url": "https://gadgetbangladesh.com.bd/brand/apple/",
+      "stage": "listing",
+      "error": "browserType.launch: Executable doesn't exist at /home/alsaim/.cache/ms-playwright/chromium_headless_shell-1223/chrome-headless-shell-linux64/chrome-headless-shell\n╔════════════════════════════════════════════════════════════╗\n║ Looks like Playwright was just installed or updated.       ║\n║ Please run the following command to download new browsers: ║\n║                                                            ║\n║     npx playwright install                                 ║\n║                                                            ║\n║ <3 Playwright Team                                         ║\n╚════════════════════════════════════════════════════════════╝"
+    },
+    {
+      "url": "https://gadgetbangladesh.com.bd/brand/samsung/",
+      "stage": "listing",
+      "error": "Browser not launched. Call launch() first."
+    },
+    {
+      "url": "https://gadgetbangladesh.com.bd/brand/oneplus/",
+      "stage": "listing",
+      "error": "Browser not launched. Call launch() first."
+    },
+    {
+      "url": "https://gadgetbangladesh.com.bd/brand/oppo/",
+      "stage": "listing",
+      "error": "Browser not launched. Call launch() first."
+    },
+    {
+      "url": "https://gadgetbangladesh.com.bd/brand/vivo/",
+      "stage": "listing",
+      "error": "Browser not launched. Call launch() first."
+    },
+    {
+      "url": "https://gadgetbangladesh.com.bd/brand/google/",
+      "stage": "listing",
+      "error": "Browser not launched. Call launch() first."
+    },
+    {
+      "url": "https://gadgetbangladesh.com.bd/brand/huawei/",
+      "stage": "listing",
+      "error": "Browser not launched. Call launch() first."
+    },
+    {
+      "url": "https://gadgetbangladesh.com.bd/brand/honor/",
+      "stage": "listing",
+      "error": "Browser not launched. Call launch() first."
+    },
+    {
+      "url": "https://gadgetbangladesh.com.bd/brand/infinix/",
+      "stage": "listing",
+      "error": "Browser not launched. Call launch() first."
+    },
+    {
+      "url": "https://gadgetbangladesh.com.bd/brand/tecno/",
+      "stage": "listing",
+      "error": "Browser not launched. Call launch() first."
+    },
+    {
+      "url": "https://gadgetbangladesh.com.bd/brand/motorola/",
+      "stage": "listing",
+      "error": "Browser not launched. Call launch() first."
+    },
+    {
+      "url": "https://gadgetbangladesh.com.bd/brand/nokia/",
+      "stage": "listing",
+      "error": "Browser not launched. Call launch() first."
+    }
+  ]
+}
