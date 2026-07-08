@@ -1,0 +1,54 @@
+import Link from "next/link";
+import { fetchBrands, fetchPhones } from "@/lib/api";
+
+export default async function Sidebar() {
+  const brands = await fetchBrands().catch(() => []);
+  const popularRes = await fetchPhones({ sort: "popularity", pageSize: 10 }).catch(() => null);
+  const popular = popularRes?.items || [];
+
+  return (
+    <div className="flex w-full flex-col gap-6">
+      {/* Brands Widget */}
+      <div className="overflow-hidden rounded-xl border border-white/[0.06] bg-[#1a2235]">
+        <h3 className="border-b border-white/[0.06] bg-white/[0.04] px-4 py-2.5 text-sm font-bold uppercase tracking-wider text-white">
+          Brands
+        </h3>
+        <div className="custom-scrollbar flex max-h-[400px] flex-col overflow-y-auto p-2">
+          {brands.slice(0, 45).map((b) => (
+            <Link
+              key={b.slug}
+              href={`/phones?brand=${encodeURIComponent(b.name)}`}
+              className="flex items-center justify-between rounded-md px-3 py-1.5 text-sm text-slate-300 hover:bg-white/[0.06] hover:text-white transition-colors"
+            >
+              <span className="font-medium">{b.name}</span>
+              <span className="text-xs text-slate-500">{b.phoneCount} devices</span>
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      {/* Top 10 Widget */}
+      {popular.length > 0 && (
+        <div className="overflow-hidden rounded-xl border border-white/[0.06] bg-[#1a2235]">
+          <h3 className="border-b border-white/[0.06] bg-white/[0.04] px-4 py-2.5 text-sm font-bold uppercase tracking-wider text-white">
+            Top 10 By Daily Interest
+          </h3>
+          <div className="flex flex-col p-2">
+            {popular.map((p, idx) => (
+              <Link
+                key={p.slug}
+                href={`/phones/${p.slug}`}
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-slate-300 hover:bg-white/[0.06] hover:text-white transition-colors"
+              >
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-blue-500/10 text-xs font-bold text-blue-400">
+                  {idx + 1}
+                </span>
+                <span className="truncate font-medium">{p.modelName}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
