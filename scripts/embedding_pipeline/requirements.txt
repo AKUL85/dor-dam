@@ -1,0 +1,19 @@
+# Embedding pipeline dependencies.
+# Install only the rows for the providers you intend to use.
+
+# Core (always required)
+chromadb>=0.5.0
+tqdm>=4.66.0
+
+# Provider: OpenAI
+openai>=1.40.0
+
+# Provider: Gemini
+google-generativeai>=0.7.0
+
+# Provider: Sentence Transformers (local)
+sentence-transformers>=3.0.0
+torch>=2.0.0
+
+# Provider: BAAI / BGE (local)
+FlagEmbedding>=1.2.0
