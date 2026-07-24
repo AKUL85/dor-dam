@@ -18,13 +18,16 @@ const SORT_OPTIONS = [
   { value: "name", label: "Name A-Z" },
 ];
 
-// Generate year options from 2015 to current year
+// Generate year options from 2015 to current year.
 function yearOptions(): string[] {
   const now = new Date().getFullYear();
   const years: string[] = [];
   for (let y = now; y >= 2015; y--) years.push(String(y));
   return years;
 }
+
+const selectClass =
+  "h-9 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text-secondary)] outline-none transition focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-ring)]";
 
 export default function PhoneListFilters({
   brands,
@@ -43,14 +46,12 @@ export default function PhoneListFilters({
     } else {
       sp.delete(key);
     }
-    // Reset to page 1 on filter change
+    // Reset to page 1 on any filter change.
     sp.delete("page");
     router.push(`/phones?${sp.toString()}`);
   };
 
-  const clearAll = () => {
-    router.push("/phones");
-  };
+  const clearAll = () => router.push("/phones");
 
   const hasFilters = currentBrand || currentYear || currentSearch;
 
@@ -60,7 +61,7 @@ export default function PhoneListFilters({
       <select
         value={currentBrand || ""}
         onChange={(e) => apply("brand", e.target.value || undefined)}
-        className="h-9 rounded-lg border border-white/[0.1] bg-[#151d2e] px-3 text-sm text-slate-300 outline-none focus:border-blue-500/50 transition"
+        className={selectClass}
       >
         <option value="">All Brands</option>
         {brands.map((b) => (
@@ -74,11 +75,13 @@ export default function PhoneListFilters({
       <select
         value={currentYear || ""}
         onChange={(e) => apply("year", e.target.value || undefined)}
-        className="h-9 rounded-lg border border-white/[0.1] bg-[#151d2e] px-3 text-sm text-slate-300 outline-none focus:border-blue-500/50 transition"
+        className={selectClass}
       >
         <option value="">All Years</option>
         {yearOptions().map((y) => (
-          <option key={y} value={y}>{y}</option>
+          <option key={y} value={y}>
+            {y}
+          </option>
         ))}
       </select>
 
@@ -86,10 +89,12 @@ export default function PhoneListFilters({
       <select
         value={currentSort}
         onChange={(e) => apply("sort", e.target.value)}
-        className="h-9 rounded-lg border border-white/[0.1] bg-[#151d2e] px-3 text-sm text-slate-300 outline-none focus:border-blue-500/50 transition"
+        className={selectClass}
       >
         {SORT_OPTIONS.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
         ))}
       </select>
 
@@ -97,7 +102,7 @@ export default function PhoneListFilters({
       {hasFilters && (
         <button
           onClick={clearAll}
-          className="flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition hover:bg-red-500/20"
+          className="flex items-center gap-1.5 rounded-lg border border-[var(--danger)]/25 bg-[var(--danger)]/10 px-3 py-1.5 text-xs font-medium text-[var(--danger)] transition hover:bg-[var(--danger)]/15"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M18 6 6 18M6 6l12 12" />

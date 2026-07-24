@@ -1,64 +1,96 @@
 @import "tailwindcss";
 
-/* ═══════════════════════════════════════════════════
-   DorDam Design System — Dark Premium Theme
-   ═══════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════
+   DorDam Design System — "Modern Editorial" (light theme)
+   A clean, GSMArena-inspired catalog UI with a modern indigo accent.
+   All surfaces, text, borders and radii are driven by these tokens,
+   so a future theme swap is a single-file change.
+   ═══════════════════════════════════════════════════════════════ */
 
 :root {
-  /* ── Surface palette ── */
-  --bg-primary: #0a0e17;
-  --bg-secondary: #111827;
-  --bg-card: #1a2235;
-  --bg-card-hover: #1f2a42;
-  --bg-elevated: #243049;
-  --bg-input: #151d2e;
+  /* ── Surfaces ── */
+  --canvas: #f4f5f7;          /* page background            */
+  --surface: #ffffff;         /* cards / panels             */
+  --surface-2: #f8f9fb;       /* subtle raised / hover      */
+  --surface-3: #eef0f4;       /* inputs, chips              */
+  --header: #12131a;          /* dark top bar               */
+  --header-2: #1c1e28;        /* nav ribbon                 */
 
-  /* ── Text palette ── */
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
-  --text-brand: #60a5fa;
+  /* ── Text ── */
+  --text: #14161c;
+  --text-secondary: #4b5563;
+  --text-muted: #8a94a6;
+  --text-on-dark: #f5f6f8;
+  --text-on-dark-muted: #9aa2b4;
 
-  /* ── Brand / Accent ── */
-  --accent: #3b82f6;
-  --accent-hover: #2563eb;
-  --accent-soft: rgba(59, 130, 246, 0.15);
-  --accent-glow: rgba(59, 130, 246, 0.25);
+  /* ── Brand / accent ── */
+  --accent: #4f46e5;          /* indigo   */
+  --accent-hover: #4338ca;
+  --accent-soft: #eef0ff;
+  --accent-ring: rgba(79, 70, 229, 0.35);
+  --accent-2: #db2777;        /* pink secondary (badges)   */
 
   /* ── Semantic ── */
-  --success: #22c55e;
-  --warning: #f59e0b;
-  --danger: #ef4444;
-  --info: #06b6d4;
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --info: #0891b2;
 
   /* ── Borders ── */
-  --border: rgba(148, 163, 184, 0.12);
-  --border-hover: rgba(148, 163, 184, 0.22);
-  --border-accent: rgba(59, 130, 246, 0.4);
+  --border: #e4e7ec;
+  --border-strong: #d3d8e0;
 
   /* ── Radius ── */
   --radius-sm: 6px;
   --radius-md: 10px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
   --radius-full: 9999px;
 
-  /* ── Shadows ── */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.45);
-  --shadow-glow: 0 0 20px rgba(59, 130, 246, 0.15);
+  /* ── Shadow ── */
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 4px 14px rgba(16, 24, 40, 0.08);
+  --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.12);
 
-  /* ── Typography ── */
+  /* ── Layout ── */
+  --content-max: 1200px;
+
+  /* ── Type ── */
   --font-sans: var(--font-geist-sans), "Inter", system-ui, -apple-system, sans-serif;
   --font-mono: var(--font-geist-mono), "JetBrains Mono", monospace;
 }
 
-/* ── Tailwind v4 theme inline ── */
+/* Tailwind v4 theme bridge — exposes tokens as utilities (bg-canvas, text-accent…) */
 @theme inline {
-  --color-background: var(--bg-primary);
-  --color-foreground: var(--text-primary);
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-header: var(--header);
+  --color-header-2: var(--header-2);
+
+  --color-ink: var(--text);
+  --color-ink-secondary: var(--text-secondary);
+  --color-ink-muted: var(--text-muted);
+
   --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-2: var(--accent-2);
+
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
 }
@@ -69,8 +101,8 @@ html {
 }
 
 body {
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  background: var(--canvas);
+  color: var(--text);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -79,20 +111,18 @@ body {
 /* ═══ Scrollbar ═══ */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #334155 transparent;
+  scrollbar-color: #c3c9d4 transparent;
 }
-*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
 *::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
-*::-webkit-scrollbar-thumb:hover { background: #475569; }
+*::-webkit-scrollbar-thumb { background: #c3c9d4; border-radius: 4px; }
+*::-webkit-scrollbar-thumb:hover { background: #a7afbd; }
 
-/* ═══ Selection ═══ */
 ::selection {
   background: var(--accent);
-  color: white;
+  color: #fff;
 }
 
-/* ═══ Focus ring ═══ */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -100,119 +130,81 @@ body {
 
 /* ═══ Animations ═══ */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
 @keyframes shimmer {
   0%   { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
-
-@keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.3); }
-  50%      { box-shadow: 0 0 16px 4px rgba(59, 130, 246, 0.15); }
-}
-
-.animate-fade-in {
-  animation: fadeIn 0.4s ease-out both;
-}
-
-.animate-slide-up {
-  animation: slideUp 0.5s ease-out both;
-}
+.animate-fade-in { animation: fadeIn 0.35s ease-out both; }
 
 /* ═══ Skeleton loader ═══ */
 .skeleton {
-  background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-elevated) 50%, var(--bg-card) 75%);
+  background: linear-gradient(90deg, var(--surface-3) 25%, #e2e6ec 50%, var(--surface-3) 75%);
   background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
+  animation: shimmer 1.4s infinite;
   border-radius: var(--radius-md);
 }
 
-/* ═══ Glassmorphism card ═══ */
-.glass-card {
-  background: rgba(26, 34, 53, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+/* ═══ Reusable primitives ═══ */
+.card {
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
 }
 
-/* ═══ Spec table styles ═══ */
-.spec-table {
-  width: 100%;
-  border-collapse: collapse;
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.section-title::before {
+  content: "";
+  width: 4px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--accent);
 }
 
+.gradient-text {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ═══ Spec table ═══ */
+.spec-table { width: 100%; border-collapse: collapse; }
 .spec-table th {
   text-align: left;
-  padding: 6px 12px;
+  padding: 8px 14px;
   color: var(--text-muted);
   font-weight: 500;
   font-size: 0.8125rem;
   white-space: nowrap;
-  width: 35%;
+  width: 32%;
   vertical-align: top;
   border-bottom: 1px solid var(--border);
 }
-
 .spec-table td {
-  padding: 6px 12px;
-  color: var(--text-primary);
+  padding: 8px 14px;
+  color: var(--text);
   font-size: 0.875rem;
   line-height: 1.5;
   border-bottom: 1px solid var(--border);
 }
-
-.spec-table tr:last-child th,
-.spec-table tr:last-child td {
-  border-bottom: none;
-}
-
 .spec-section-header {
   background: var(--accent-soft);
   border-left: 3px solid var(--accent);
   padding: 8px 14px;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 0.875rem;
-  color: var(--text-brand);
-  margin: 0;
-}
-
-/* ═══ Gradient text ═══ */
-.gradient-text {
-  background: linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-/* ═══ Subtle noise texture overlay ═══ */
-.noise-bg::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.02'/%3E%3C/svg%3E");
-  pointer-events: none;
-  z-index: 0;
-}
-
-.custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
-}
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  color: var(--accent);
 }

@@ -1,5 +1,6 @@
 const express = require('express');
 const scraperRoutes = require('./scraperRoutes');
+const catalogRoutes = require('./catalogRoutes');
 const { isAvailable } = require('../db/prisma');
 
 const router = express.Router();
@@ -15,5 +16,7 @@ router.get('/health', (_req, res) => {
 });
 
 router.use('/scrapers', scraperRoutes);
+// GSMArena-style catalog API (brands, phones, search, compare).
+router.use('/', catalogRoutes);
 
 module.exports = router;

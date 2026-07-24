@@ -13,6 +13,7 @@ model PhoneModel {
   model_name    String
   category_tags String[]
   image_url     String?
+  pictures      String[]
   release_year  Int?
   variants      Phone[]
 }
