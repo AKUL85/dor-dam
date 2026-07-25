@@ -228,6 +228,7 @@ class ChatRequest(StrictModel):
 class ChatEngineTrace(StrictModel):
     intent: str
     engines_called: list[str]
+    extracted_entities: dict[str, Any] = Field(default_factory=dict)
     sql_context: str
     vector_context: str
     prompt_tokens_estimate: int
@@ -238,3 +239,4 @@ class ChatResponse(StrictModel):
     intent: str
     request_id: str
     trace: Optional[ChatEngineTrace] = None
+    extracted_entities: dict[str, Any] = Field(default_factory=dict)

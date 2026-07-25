@@ -80,6 +80,17 @@ class ComparedPhone:
     price_max: Optional[float]
 
 
+# Aspect dimension mappings
+ASPECT_DIMENSIONS: dict[str, list[str]] = {
+    "camera": ["Camera", "Photography", "Display", "Processor"],
+    "software": ["Software", "AI Features", "Processor"],
+    "ai": ["AI Features", "Processor", "Software"],
+    "ai_feature": ["AI Features", "Processor", "Software"],
+    "battery": ["Battery", "Charging", "Display"],
+    "value": ["Value", "Processor", "Battery", "Camera"],
+}
+
+
 # ──────────────────────────────────────────────────────────────────────
 # Resolution
 # ──────────────────────────────────────────────────────────────────────
@@ -96,40 +107,55 @@ def _slugify(text: str) -> str:
 
 
 def _resolve_one(session: Session, name: str) -> Optional[Phone]:
-    """Find a phone that matches ``name`` using slug, brand+name, or fuzzy
-    fallback. Returns at most one row."""
+    """Find a phone matching ``name`` using slug, brand, series, or fuzzy fallback."""
     name = name.strip()
     if not name:
         return None
+
+    # 1. Exact slug match
     exact = session.execute(select(Phone).where(Phone.slug == _slugify(name))).scalar_one_or_none()
     if exact:
         return exact
 
+    # 2. Brand match: If 'name' is a brand (Apple, Samsung, Xiaomi, Realme, etc.)
+    brand_match = session.execute(
+        select(Phone).where(Phone.brand.ilike(name)).order_by(Phone.price_min.desc().nullslast()).limit(1)
+    ).scalar_one_or_none()
+    if brand_match:
+        return brand_match
+
+    # 3. Series match: e.g. 'Galaxy S', 'Redmi Note', 'iPhone Pro'
+    series_match = session.execute(
+        select(Phone).where(Phone.name.ilike(f"%{name}%")).order_by(Phone.price_min.desc().nullslast()).limit(1)
+    ).scalar_one_or_none()
+    if series_match:
+        return series_match
+
+    # 4. Partial slug match
     like_slug = session.execute(
-        select(Phone).where(Phone.slug.ilike(f"%{_slugify(name)}%")).limit(1)
+        select(Phone).where(Phone.slug.ilike(f"%{_slugify(name)}%")).order_by(Phone.price_min.desc().nullslast()).limit(1)
     ).scalar_one_or_none()
     if like_slug:
         return like_slug
 
+    # 5. Token match
     if " " in name:
         head, tail = name.split(" ", 1)
-        brand_match = session.execute(
+        brand_phones = session.execute(
             select(Phone).where(Phone.brand.ilike(head)).limit(50)
         ).scalars().all()
-        head_slug = _slugify(name)
-        # Prefer rows whose slug contains all meaningful tokens.
         tokens = [t for t in _slugify(tail).split("-") if len(t) >= 2]
         scored: list[tuple[int, Phone]] = []
-        for p in brand_match:
+        for p in brand_phones:
             slug = (p.slug or "").lower()
-            score = sum(1 for tok in tokens if tok in slug)
-            if score:
-                scored.append((score, p))
+            sc = sum(1 for tok in tokens if tok in slug)
+            if sc:
+                scored.append((sc, p))
         if scored:
-            scored.sort(key=lambda x: (-x[0], -(p.price_min or 0 for p in [x[1]])))
+            scored.sort(key=lambda x: (-x[0], -(x[1].price_min or 0)))
             return scored[0][1]
 
-    # Final fuzzy: ilike on the human name.
+    # 6. Final fuzzy fallback
     return session.execute(
         select(Phone).where(or_(Phone.name.ilike(f"%{name}%"))).limit(1)
     ).scalar_one_or_none()
@@ -167,8 +193,7 @@ def _score_one(phone: Phone, dimensions: Sequence[str]) -> tuple[dict[str, float
 
 
 def _winner_for(dimension: str, scores: dict[str, float]) -> tuple[Optional[str], float, bool]:
-    """Decide which phone wins a single dimension. Returns
-    ``(winner_key, margin, is_tie)``. Ties are declared when ``margin < 0.02``."""
+    """Decide which phone wins a single dimension."""
     pairs = sorted(scores.items(), key=lambda kv: kv[1])
     if not pairs:
         return None, 0.0, True
@@ -177,20 +202,15 @@ def _winner_for(dimension: str, scores: dict[str, float]) -> tuple[Optional[str]
     lo_key, lo_val = pairs[0]
     hi_key, hi_val = pairs[-1]
     if abs(hi_val - lo_val) < 0.02:
-        # Tie among all phones, no winner.
         return None, 0.0, True
     return hi_key, hi_val - lo_val, False
 
 
 def _display_label(p: ComparedPhone) -> str:
-    """Return a markdown cell label that doesn't double-stamp the brand."""
     name = p.name or ""
     if name.lower().startswith(p.brand.lower()):
         return name
     return f"{p.brand} {name}".strip()
-    if not text:
-        return "—"
-    return text.split("\n")[0][:60]
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -199,7 +219,7 @@ def _display_label(p: ComparedPhone) -> str:
 
 def compare_phones(phones: Sequence[Phone],
                    dimensions: Optional[Sequence[str]] = None) -> ComparisonResult:
-    """Take a pre-loaded list of phones and produce a :class:`ComparisonResult`."""
+    """Take a pre-loaded list of phones and produce a ComparisonResult."""
     dims = list(dimensions) if dimensions else list(ALL_DIMENSION_NAMES)
 
     score_table: dict[int, dict[str, float]] = {}
@@ -250,18 +270,23 @@ def compare_phones(phones: Sequence[Phone],
         wins=wins,
         ties=ties,
         recommendation=recommendation,
-        raw_query=", ".join(cp.name for cp in summary),
+        raw_query=" vs ".join(_display_label(cp) for cp in summary),
     )
 
 
 def compare(names: Sequence[str],
             *,
+            aspect: Optional[str] = None,
             session: Optional[Session] = None,
             dimensions: Optional[Sequence[str]] = None) -> ComparisonResult:
     """Resolve phones from the DB and compare."""
+    selected_dims = list(dimensions) if dimensions else None
+    if not selected_dims and aspect and aspect.lower() in ASPECT_DIMENSIONS:
+        selected_dims = ASPECT_DIMENSIONS[aspect.lower()]
+
     if session is not None:
         phones = resolve_phones(session, names)
-        return compare_phones(phones, dimensions)
+        return compare_phones(phones, selected_dims)
     settings = load_settings()
     with ExitStack() as stack:
         from db.session import engine
@@ -269,7 +294,7 @@ def compare(names: Sequence[str],
         sess_ctx = session_scope(eng)
         session = stack.enter_context(sess_ctx)
         phones = resolve_phones(session, names)
-        result = compare_phones(phones, dimensions)
+        result = compare_phones(phones, selected_dims)
         return result
 
 
@@ -277,45 +302,28 @@ def _compose_recommendation(phones: List[ComparedPhone],
                             rows: List[DimensionRow],
                             wins: dict[str, int],
                             ties: dict[str, int]) -> str:
-    """Compose a single-sentence recommendation in priority order:
-
-    1. Prefer the phone with the most wins.
-    2. Tie-break on price (cheaper wins).
-    3. If tied again, prefer the phone with the largest single-dim margin.
-    """
+    """Compose a single-sentence recommendation in priority order."""
     if not phones:
         return "No phones provided."
     top_wins = max(wins.values())
     leaders = [p for p in phones if wins[p.key] == top_wins]
     if len(leaders) > 1:
-        # Price tie-break.
         leaders.sort(key=lambda p: (p.price_min or float("inf")))
-        if len(leaders) > 1 and (leaders[0].price_min or 0) >= (leaders[1].price_min or 0):
-            # Couldn't separate by price either — fall back to margin call.
-            pass
 
     leader = leaders[0]
     runner_up = next((p for p in phones if p is not leader), None)
 
-    # Describe why.
     leader_wins = [r.dimension for r in rows if r.winner_key == leader.key]
     leader_summary_dims = leader_wins[:3] if leader_wins else []
     if not leader_summary_dims:
         verdict = "Comes out roughly even"
     else:
-        if leader.price_min and runner_up and (runner_up.price_min or 0) > leader.price_min:
-            cheaper_note = " at a lower price"
-        else:
-            cheaper_note = ""
+        cheaper_note = " at a lower price" if (leader.price_min and runner_up and (runner_up.price_min or 0) > leader.price_min) else ""
         joined = ", ".join(leader_summary_dims)
         verdict = f"Wins on {joined}"
 
-    # Pick a final human label.
-    # Description used by the recommendation sentence.
     label = _display_label(leader)
-    price = ""
-    if leader.price_min:
-        price = f" (৳{int(leader.price_min):,})"
+    price = f" (৳{int(leader.price_min):,})" if leader.price_min else ""
     if len(phones) == 2:
         return f"{verdict} → pick the {label}{price}{cheaper_note}."
     return f"{verdict} → {label}{price} leads this comparison."
@@ -326,8 +334,7 @@ def _compose_recommendation(phones: List[ComparedPhone],
 # ──────────────────────────────────────────────────────────────────────
 
 def render_markdown(result: ComparisonResult) -> str:
-    """Pretty-print the comparison as a markdown table with prose
-    takeaways."""
+    """Pretty-print comparison as a markdown table with prose takeaways."""
     if not result.phones:
         return "_No phones to compare._"
 
@@ -337,8 +344,8 @@ def render_markdown(result: ComparisonResult) -> str:
     title = f"# Head-to-head: {result.raw_query}\n"
     summary = (
         f"**Quick picks:** "
-        + ", ".join(f"{_display_label(p)}: {result.wins.get(p.key, 0)} wins, "
-                    f"{result.ties.get(p.key, 0)} ties" for p in result.phones)
+        + " | ".join(f"{_display_label(p)}: {result.wins.get(p.key, 0)} wins, "
+                     f"{result.ties.get(p.key, 0)} ties" for p in result.phones)
         + "\n\n"
     )
     lines.append(title)
@@ -356,7 +363,6 @@ def render_markdown(result: ComparisonResult) -> str:
             cells.append(f"{mark}{score:.2f} — {note}")
         lines.append("| " + " | ".join(cells) + " |")
 
-    # Final recommendation
     lines.append("\n## Final recommendation\n")
     lines.append(result.recommendation)
 

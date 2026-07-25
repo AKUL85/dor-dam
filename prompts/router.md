@@ -24,7 +24,12 @@ dispatches accordingly. Do not write any prose outside the JSON block.
 | `pricing`        | Stores + prices for a named phone                  | `PricingResult` (markdown + offers)  |
 | `recommend`      | Rank phones matching budget/priority/brand         | `List[RecommendationResult]`         |
 | `compare`        | Head-to-head comparison of 2+ named phones         | `ComparisonResult` (markdown table)  |
-| `search`         | Semantic + lexical recall over the catalog         | `SearchResult` (reranked snippets)   |
+| `review`         | Subjective user/expert reviews, ratings & verdict  | `SearchResult` (review snippets)     |
+| `buying_guide`   | Guided persona and multi-criteria recommendations  | `GuideResult` (weighted candidates)  |
+| `future_phones`  | Launch roadmaps, 2026 upcoming phones, release timing| `RoadmapResult` (release schedule) |
+| `deals`          | 0% EMI plans, bank offers, sales & warranty policies| `DealsResult` (financing matrix)    |
+| `resale`         | Second-hand valuation, trade-in exchange & refurb   | `ValuationResult` (resale metrics)   |
+| `hybrid` / `search`| Semantic + lexical recall over full catalog      | `SearchResult` (reranked snippets)   |
 
 ---
 
@@ -87,21 +92,21 @@ Output **only** this JSON, no surrounding prose:
 
 ```json
 {
-  "intent": "<one of: recommendation | comparison | specification | review | price_lookup | availability | mixed | general>",
+  "intent": "<one of: recommendation | comparison | specification | review | price_lookup | availability | mixed | general | lifecycle_advisory | resale_tradein | deals_financing>",
   "engines": [
     {
-      "name": "specs | pricing | recommend | compare | search",
+      "name": "specs | pricing | recommend | compare | review | buying_guide | future_phones | deals | resale | hybrid | search",
       "args": { ... },
       "weight": 0.0–1.0,
       "rationale": "<one short sentence>"
     }
   ],
-  "merge": "concat | table | ranked | spec_then_pricing",
+  "merge": "concat | table | ranked | spec_then_pricing | advisory_merge | resale_merge | deals_merge",
   "budget": <number or null>,
   "budget_min": <number or null>,
   "brands": ["<brand>", "..."],
   "models": ["<full model name>", "..."],
-  "priority": "<camera | gaming | battery | performance | display | charging | value | null>",
+  "priority": "<camera | gaming | battery | performance | display | charging | value | persona | null>",
   "needs_vector_fallback": true | false,
   "needs_sql": true | false,
   "top_k": <integer>,
@@ -126,6 +131,9 @@ Field rules:
   - `ranked` → SQL candidates first, vector snippets appended as
     supporting evidence.
   - `spec_then_pricing` → spec card then pricing card.
+  - `advisory_merge` → release timing roadmap + candidate recommendation.
+  - `resale_merge` → depreciation valuation + trade-in market pricing.
+  - `deals_merge` → financing terms + store discounts + warranty cards.
 - `needs_sql`: true unless the question is purely about reviews or
   subjective qualities the SQL catalog does not store.
 - `needs_vector_fallback`: true when the SQL alone is unlikely to
@@ -145,14 +153,17 @@ Field rules:
 
 | Intent              | Engines (in order)                                                  | merge             |
 | ------------------- | ------------------------------------------------------------------- | ----------------- |
-| recommendation      | `recommend`, `search` (only if `needs_vector_fallback`)             | `ranked`          |
+| recommendation      | `recommend`, `buying_guide`, `search` / `hybrid`                    | `ranked`          |
 | comparison          | `specs`, `compare`, `pricing` (only if user asked for stores)       | `table`           |
-| specification       | `specs`, `search` (only if field missing)                           | `spec_then_pricing` |
-| price_lookup        | `pricing`                                                           | `concat`          |
-| availability        | `pricing`, `search`                                                 | `concat`          |
-| review              | `search`                                                            | `concat`          |
-| mixed               | union of the relevant primary engines + `search` last               | `concat`          |
-| general             | `search`                                                            | `concat`          |
+| specification       | `specs`, `search` / `hybrid` (only if field missing)                | `spec_then_pricing` |
+| price_lookup        | `pricing`, `search` / `hybrid`                                      | `concat`          |
+| availability        | `pricing`, `search` / `hybrid`                                      | `concat`          |
+| review              | `review`, `search` / `hybrid`                                       | `concat`          |
+| mixed               | union of the relevant primary engines + `search` / `hybrid` last    | `concat`          |
+| general             | `search` / `hybrid`                                                 | `concat`          |
+| lifecycle_advisory  | `future_phones`, `buying_guide`, `search` / `hybrid`                | `advisory_merge`  |
+| resale_tradein      | `resale`, `pricing`, `search` / `hybrid`                            | `resale_merge`    |
+| deals_financing     | `deals`, `pricing`, `search` / `hybrid`                             | `deals_merge`     |
 
 Override the rubric **only** when you can name the override reason in
 `notes`. Otherwise stick to it.

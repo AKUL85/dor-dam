@@ -89,6 +89,17 @@ SPEC_FIELDS: tuple[str, ...] = (
     "connectivity",
     "sensors",
     "features",
+    "ai_features",
+    "software_updates",
+    "battery_technology",
+    "resale",
+    "durability",
+    "satellite",
+    "waterproof_rating",
+    "stylus",
+    "audio",
+    "ecosystem",
+    "accessory_support",
 )
 
 
@@ -106,6 +117,17 @@ SPEC_LABELS: dict[str, str] = {
     "connectivity": "Connectivity",
     "sensors": "Sensors",
     "features": "Features",
+    "ai_features": "AI Features",
+    "software_updates": "Software Updates",
+    "battery_technology": "Battery Technology",
+    "resale": "Resale Value",
+    "durability": "Durability",
+    "satellite": "Satellite Connectivity",
+    "waterproof_rating": "Waterproof Rating",
+    "stylus": "Stylus Support",
+    "audio": "Audio & Speakers",
+    "ecosystem": "Ecosystem Integration",
+    "accessory_support": "Accessory Support",
 }
 
 
@@ -274,6 +296,84 @@ def _build_pricing_paragraph(summary: PricingSummary, currency: str = "BDT") -> 
     return " ".join(sentences)
 
 
+def _build_experiential_paragraph(record: dict[str, Any]) -> str:
+    """Render qualitative, experiential, and domain persona sentences for semantic search."""
+    name = (_clean(record.get("name")) or "").lower()
+    brand = (_clean(record.get("brand")) or "").lower()
+    specs = record.get("merged_specs") or {}
+    text_blob = (" ".join(str(v) for v in specs.values()) + " " + name + " " + brand).lower()
+
+    aspects: list[str] = []
+
+    # 1. AI Features
+    if any(k in text_blob for k in ["galaxy ai", "gemini", "apple intelligence", "npu", "ai camera", "ai features"]):
+        aspects.append("AI Features: Advanced on-device AI capabilities including smart photography, live translation, and voice intelligence.")
+    else:
+        aspects.append("AI Features: Standard assistant and computational processing capabilities.")
+
+    # 2. Software Updates
+    if any(k in text_blob for k in ["7 years", "5 years", "4 years", "one ui", "ios", "pixel"]):
+        aspects.append("Software Updates & OS Support: Long-term software support with multi-year OS updates and regular security patches.")
+    else:
+        aspects.append("Software Updates & OS Support: Standard Android/OS software updates and security releases.")
+
+    # 3. Battery Technology
+    if any(k in text_blob for k in ["silicon-carbon", "li-po", "li-ion", "wireless", "fast charging", "mah"]):
+        aspects.append("Battery Technology: Efficient power cell technology with fast charging and thermal management.")
+    else:
+        aspects.append("Battery Technology: Standard lithium battery technology.")
+
+    # 4. Resale Value
+    if "apple" in brand or "iphone" in name or "samsung" in brand:
+        aspects.append("Resale Value: High secondary market demand and top resale value retention in Bangladesh.")
+    else:
+        aspects.append("Resale Value: Stable mid-market resale retention.")
+
+    # 5. Durability & Build Materials
+    if any(k in text_blob for k in ["victus", "gorilla glass", "armor", "titanium", "aluminum"]):
+        aspects.append("Durability & Build: Premium structural durability featuring toughened glass protection and reinforced frame.")
+    else:
+        aspects.append("Durability & Build: Durable everyday build quality.")
+
+    # 6. Satellite Connectivity
+    if any(k in text_blob for k in ["satellite", "emergency sos", "bds"]):
+        aspects.append("Satellite Connectivity: Emergency satellite communication capability for remote areas.")
+    else:
+        aspects.append("Satellite Connectivity: Standard cellular and Wi-Fi networking without satellite messaging.")
+
+    # 7. Waterproof Rating (IP Code)
+    if any(k in text_blob for k in ["ip68", "ip69k", "ip67", "water resistant", "waterproof"]):
+        aspects.append("Waterproof Rating: Official IP-rated dust and water resistance for underwater protection.")
+    else:
+        aspects.append("Waterproof Rating: Standard splash protection.")
+
+    # 8. Stylus Support
+    if any(k in text_blob for k in ["s pen", "s-pen", "stylus"]):
+        aspects.append("Stylus Support: Integrated or compatible active stylus support for note-taking and drawing.")
+    else:
+        aspects.append("Stylus Support: Standard touch input without active stylus pen hardware.")
+
+    # 9. Audio & Speakers
+    if any(k in text_blob for k in ["stereo", "dolby atmos", "hi-res", "3.5mm", "speakers"]):
+        aspects.append("Audio & Speakers: High-fidelity stereo speakers with spatial audio support.")
+    else:
+        aspects.append("Audio & Speakers: Standard speaker system.")
+
+    # 10. Ecosystem Integration
+    if any(k in text_blob for k in ["magsafe", "apple", "smartthings", "samsung", "mihome", "ecosystem"]):
+        aspects.append("Ecosystem Integration: Seamless cross-device connectivity within manufacturer smart ecosystem.")
+    else:
+        aspects.append("Ecosystem Integration: Standard multi-device connectivity.")
+
+    # 11. Accessory Support
+    if any(k in text_blob for k in ["magnetic", "wireless charger", "dock", "case"]):
+        aspects.append("Accessory Support: Wide compatibility with magnetic chargers, protective cases, and expansion accessories.")
+    else:
+        aspects.append("Accessory Support: Standard accessory ecosystem compatibility.")
+
+    return " ".join(aspects)
+
+
 def _build_document(record: dict[str, Any]) -> str:
     """Assemble the natural-language document for a single phone record."""
     name = _clean(record.get("name")) or "Unnamed phone"
@@ -304,6 +404,9 @@ def _build_document(record: dict[str, Any]) -> str:
     pricing = _aggregate_stores(record.get("stores"))
     pricing_paragraph = _build_pricing_paragraph(pricing)
 
+    # Experiential section for semantic search ----------------------------
+    experiential_paragraph = _build_experiential_paragraph(record)
+
     # Final summary --------------------------------------------------------
     summary_sentence = _build_summary_sentence(
         name=name,
@@ -317,6 +420,7 @@ def _build_document(record: dict[str, Any]) -> str:
     if spec_paragraph:
         paragraphs.append(f"Key specifications — {spec_paragraph}")
     paragraphs.append(pricing_paragraph)
+    paragraphs.append(experiential_paragraph)
     paragraphs.append(summary_sentence)
 
     return "\n\n".join(p for p in paragraphs if p)

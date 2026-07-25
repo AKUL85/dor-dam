@@ -231,15 +231,225 @@ def score_value(f: PhoneFeatures) -> Tuple[float, str]:
     perf, perf_note = score_performance(f)
     price = f.phone.price_min or 0
     if price <= 0:
-        # No price ⇒ cannot compute value.
         return 0.0, ""
-    # Cheap AND capable — invert price (log scale) and multiply by perf.
     import math
-    price_score = _bucket(math.log10(max(price, 1000)), 3.5, 5.5)  # 3.1k→0, 316k→1
-    price_score = 1.0 - price_score  # invert: cheaper is better
+    price_score = _bucket(math.log10(max(price, 1000)), 3.5, 5.5)
+    price_score = 1.0 - price_score
     overall = 0.5 * perf + 0.5 * price_score
     note_parts = [perf_note, f"৳{int(price):,}"]
     return overall, " · ".join(p for p in note_parts if p)
+
+
+def score_software(f: PhoneFeatures) -> Tuple[float, str]:
+    """Evaluates OS clean software experience, update support, and UI optimization."""
+    p = f.phone
+    text = (p.os_text or "").lower() + " " + (p.name or "").lower()
+    score = 0.5
+    notes = []
+
+    if any(k in text for k in ["ios", "iphone", "pixel"]):
+        score = 0.95
+        notes.append("Top OS Support")
+    elif any(k in text for k in ["oneui", "samsung", "oxygenos", "nothing"]):
+        score = 0.85
+        notes.append("Clean / Long Support UI")
+    elif "android" in text:
+        score = 0.70
+        notes.append("Standard Android")
+
+    if any(k in text for k in ["7 years", "5 years", "long support", "clean"]):
+        score = min(score + 0.10, 1.0)
+        notes.append("Extended Updates")
+
+    return score, " · ".join(notes) if notes else "Standard OS"
+
+
+def score_foldable(f: PhoneFeatures) -> Tuple[float, str]:
+    """Scores foldable and flip form factors."""
+    p = f.phone
+    text = (p.name or "").lower() + " " + (p.display_text or "").lower() + " " + (p.category or "").lower()
+    if any(k in text for k in ["fold", "flip", "foldable", "flexible"]):
+        if "flip" in text:
+            return 1.0, "Foldable Flip"
+        return 1.0, "Foldable Book"
+    return 0.0, ""
+
+
+def score_compact(f: PhoneFeatures) -> Tuple[float, str]:
+    """Scores compact, easy-to-hold phones (display <= 6.3 inches)."""
+    inches = f.display_inches
+    if inches is None:
+        return 0.0, ""
+    if inches <= 6.1:
+        return 1.0, f"Ultra Compact ({inches:.1f}\")"
+    elif inches <= 6.3:
+        return 0.85, f"Compact ({inches:.1f}\")"
+    elif inches <= 6.5:
+        return 0.5, f"Mid Size ({inches:.1f}\")"
+    return 0.2, f"Large Display ({inches:.1f}\")"
+
+
+def score_business(f: PhoneFeatures) -> Tuple[float, str]:
+    """Evaluates business productivity: RAM, storage, battery, security, software."""
+    p = f.phone
+    parts = []
+    notes = []
+
+    if f.ram_gb:
+        parts.append(_bucket(f.ram_gb, 6, 16))
+        notes.append(f"{f.ram_gb}GB RAM")
+
+    if f.storage_gb:
+        parts.append(_bucket(f.storage_gb, 128, 512))
+        notes.append(f"{f.storage_gb}GB Storage")
+
+    sw_score, _ = score_software(f)
+    parts.append(sw_score)
+
+    if not parts:
+        return 0.0, ""
+    return sum(parts) / len(parts), " · ".join(notes)
+
+
+def score_student(f: PhoneFeatures) -> Tuple[float, str]:
+    """Balanced value for money, battery life, and solid everyday performance."""
+    val_score, _ = score_value(f)
+    bat_score, _ = score_battery(f)
+    perf_score, _ = score_performance(f)
+    score = 0.4 * val_score + 0.3 * bat_score + 0.3 * perf_score
+    return score, f"Student Value Score {score:.2f}"
+
+
+def score_travel(f: PhoneFeatures) -> Tuple[float, str]:
+    """Evaluates travel readiness: battery endurance, fast charging, build durability."""
+    bat_score, b_note = score_battery(f)
+    chg_score, c_note = score_charging(f)
+    p = f.phone
+    text = (p.body_text or "").lower() + " " + (p.display_text or "").lower()
+    dur_bonus = 0.2 if any(k in text for k in ["ip68", "ip67", "gorilla", "waterproof", "rugged"]) else 0.0
+    score = min(0.5 * bat_score + 0.3 * chg_score + dur_bonus + 0.2, 1.0)
+    return score, f"Travel Score: {score:.2f}"
+
+
+def score_photography(f: PhoneFeatures) -> Tuple[float, str]:
+    """Enhanced photography score focusing on optics, telephoto zoom, OIS, and high MP."""
+    cam_score, cam_note = score_camera(f)
+    p = f.phone
+    text = (p.camera_text or "").lower()
+    optics_flag = _flags(text, r"leica", r"zeiss", r"hasselblad", r"raw", r"prores", r"periscope")
+    optics_bonus = _bucket(optics_flag, 0, 3) * 0.2
+    total = min(cam_score + optics_bonus, 1.0)
+    note = f"{cam_note} · Pro Optics" if optics_flag else cam_note
+    return total, note
+
+
+def score_durability(f: PhoneFeatures) -> Tuple[float, str]:
+    """Evaluates build quality, IP waterproof rating, and glass protection."""
+    p = f.phone
+    text = (p.body_text or "").lower() + " " + (p.display_text or "").lower()
+    notes = []
+    score = 0.3
+
+    if "ip69" in text or "ip69k" in text:
+        score = 1.0
+        notes.append("IP69K Waterproof")
+    elif "ip68" in text:
+        score = 0.9
+        notes.append("IP68 Waterproof")
+    elif "ip67" in text:
+        score = 0.75
+        notes.append("IP67 Water Resistant")
+
+    if any(k in text for k in ["victus", "ceramic shield", "gorilla glass", "titanium", "armor"]):
+        score = min(score + 0.15, 1.0)
+        notes.append("Armored Glass/Frame")
+
+    return score, " · ".join(notes) if notes else "Standard Build"
+
+
+def score_resale(f: PhoneFeatures) -> Tuple[float, str]:
+    """Evaluates brand resale value retention in Bangladesh market."""
+    b = (f.phone.brand or "").lower()
+    name = (f.phone.name or "").lower()
+    if b == "apple" or "iphone" in name:
+        return 0.95, "High Apple Resale Retention"
+    elif b == "samsung" and any(k in name for k in ["s25", "s24", "s23", "ultra", "z fold", "z flip"]):
+        return 0.85, "High Samsung Flagship Resale"
+    elif b in ["samsung", "google", "oneplus"]:
+        return 0.70, "Moderate Brand Resale"
+    elif b in ["xiaomi", "realme", "vivo", "oppo"]:
+        return 0.55, "Standard Resale"
+    return 0.40, "Budget Resale Tier"
+
+
+def score_ecosystem(f: PhoneFeatures) -> Tuple[float, str]:
+    """Evaluates brand ecosystem integration (MagSafe, watch, smart home)."""
+    b = (f.phone.brand or "").lower()
+    name = (f.phone.name or "").lower()
+    if b == "apple" or "iphone" in name:
+        return 1.0, "Apple Ecosystem (MagSafe/Watch/Mac)"
+    elif b == "samsung":
+        return 0.85, "Samsung Ecosystem (Galaxy Watch/Buds/SmartThings)"
+    elif b == "xiaomi":
+        return 0.75, "Xiaomi Ecosystem (Smart Home/IR Blaster)"
+    elif b in ["google", "oneplus"]:
+        return 0.70, "Android Connected Ecosystem"
+    return 0.50, "Standard Connectivity"
+
+
+def score_accessibility(f: PhoneFeatures) -> Tuple[float, str]:
+    """Evaluates display readability, screen size, loudness, and battery reliability."""
+    p = f.phone
+    parts = []
+    notes = []
+
+    if f.display_inches:
+        parts.append(_bucket(f.display_inches, 6.0, 7.0))
+        notes.append(f"{f.display_inches:.1f}\" Screen")
+
+    if f.peak_nits:
+        parts.append(_bucket(f.peak_nits, 600, 2500))
+        notes.append(f"{f.peak_nits} nits")
+
+    bat_score, _ = score_battery(f)
+    parts.append(bat_score)
+
+    if not parts:
+        return 0.5, "Standard Accessibility"
+    return sum(parts) / len(parts), " · ".join(notes)
+
+
+def score_content_creator(f: PhoneFeatures) -> Tuple[float, str]:
+    """Evaluates vlogging/video recording, 4K/8K, OIS, front camera, and storage."""
+    cam_score, _ = score_camera(f)
+    p = f.phone
+    text = (p.camera_text or "").lower()
+    video_flags = _flags(text, r"4k60", r"8k", r"prores", r"log", r"ois", r"hdr video")
+    video_bonus = _bucket(video_flags, 0, 4) * 0.3
+
+    storage_bonus = 0.1 if (f.storage_gb and f.storage_gb >= 256) else 0.0
+    total = min(cam_score * 0.6 + video_bonus + storage_bonus + 0.1, 1.0)
+    return total, f"Creator Score: {total:.2f}"
+
+
+def score_ai_features(f: PhoneFeatures) -> Tuple[float, str]:
+    """Evaluates AI features (Galaxy AI, Gemini, Apple Intelligence, NPU)."""
+    p = f.phone
+    text = (p.processor_text or "").lower() + " " + (p.os_text or "").lower() + " " + (p.name or "").lower()
+    notes = []
+    score = 0.3
+
+    if any(k in text for k in ["galaxy ai", "gemini", "apple intelligence"]):
+        score = 1.0
+        notes.append("On-Device Flagship AI")
+    elif any(k in text for k in ["snapdragon 8 gen 3", "snapdragon 8 gen 2", "apple a18", "apple a19", "tensor g4", "dimensity 9300"]):
+        score = 0.85
+        notes.append("High Performance NPU")
+    elif any(k in text for k in ["snapdragon 7", "tensor", "dimensity 8"]):
+        score = 0.65
+        notes.append("Mid-tier AI Support")
+
+    return score, " · ".join(notes) if notes else "Basic AI"
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -254,6 +464,21 @@ PRIORITY_SCORERS = {
     "display": score_display,
     "charging": score_charging,
     "value": score_value,
+    "budget": score_value,
+    "software": score_software,
+    "foldable": score_foldable,
+    "compact": score_compact,
+    "business": score_business,
+    "student": score_student,
+    "travel": score_travel,
+    "photography": score_photography,
+    "durability": score_durability,
+    "resale": score_resale,
+    "ecosystem": score_ecosystem,
+    "accessibility": score_accessibility,
+    "content_creator": score_content_creator,
+    "ai_features": score_ai_features,
+    "ai": score_ai_features,
 }
 
 

@@ -260,8 +260,25 @@ def score_value(s: PhoneSignals) -> Tuple[float, str]:
     return overall, " · ".join(notes)
 
 
+def score_ai_features(s: PhoneSignals) -> Tuple[float, str]:
+    text = (s.phone.processor_text or "") + " " + (s.phone.os_text or "") + " " + (s.phone.name or "")
+    t = text.lower()
+    score = 0.3
+    notes = []
+    if any(k in t for k in ["galaxy ai", "gemini", "apple intelligence"]):
+        score = 1.0
+        notes.append("Flagship On-Device AI")
+    elif any(k in t for k in ["snapdragon 8 gen 3", "snapdragon 8 gen 2", "apple a18", "apple a19", "tensor g4"]):
+        score = 0.85
+        notes.append("High Performance NPU")
+    elif any(k in t for k in ["snapdragon 7", "tensor", "dimensity 8"]):
+        score = 0.65
+        notes.append("Mid-Tier NPU")
+    return score, " · ".join(notes) if notes else "Basic AI"
+
+
 # ──────────────────────────────────────────────────────────────────────
-# Registry — the 9 dimensions, in display order
+# Registry — the dimensions, in display order
 # ──────────────────────────────────────────────────────────────────────
 
 DIMENSIONS: list[tuple[str, callable]] = [
@@ -271,6 +288,7 @@ DIMENSIONS: list[tuple[str, callable]] = [
     ("Battery", score_battery),
     ("Charging", score_charging),
     ("Software", score_software),
+    ("AI Features", score_ai_features),
     ("Gaming", score_gaming),
     ("Photography", score_photography),
     ("Value", score_value),

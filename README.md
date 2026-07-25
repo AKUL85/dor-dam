@@ -1,104 +1,94 @@
 # DorDam
 
-A phone catalog and price-comparison platform for the Bangladesh market. It scrapes
-phone specifications (GSMArena) and store prices (local BD retailers), then serves a
-GSMArena-style browsing experience: brands, phone specs, search, filters, and compare.
+A phone catalog, price-comparison, and Hybrid RAG recommendation platform for the Bangladesh market. It scrapes phone specifications (GSMArena) and store prices (local BD retailers), serves a GSMArena-style browsing experience, and provides an intelligent Hybrid RAG chat assistant for phone recommendations and comparisons.
 
-The repo is a monorepo with two independent apps:
+The repo is organized as follows:
 
 ```
-dor-dam-main/
-├── backend/            Node.js + Express API + scrapers (Prisma/Postgres optional)
-└── frontend/dordam/    Next.js 16 (App Router) + React 19 + Tailwind v4
+dordam/
+├── api/                Python FastAPI Hybrid RAG Chatbot & Retrieval API (Port 8000)
+├── backend/            Node.js + Express API + Retailer Scrapers (Port 4000)
+└── frontend/dordam/    Next.js 16 (App Router) + React 19 + Tailwind v4 (Port 3000)
 ```
 
 ---
 
-## Architecture at a glance
+## Quick Start (Running All Services)
+
+To run the complete system locally, start each of the 3 services in separate terminal windows:
+
+### 1. Hybrid RAG FastAPI Service (Port 8000)
+```bash
+# From workspace root
+PYTHONPATH=.:scripts python3 -m uvicorn api.main:app --host 0.0.0.0 --port 8000
+```
+- **Endpoints**: `/chat`, `/recommend`, `/compare`, `/price`, `/search`, `/healthz`
+- **Validation Suite**: `python3 scripts/validate_rag_pipeline.py`
+- **Test Suite**: `pytest tests/query_tests/`
+
+### 2. Express Backend API (Port 4000)
+```bash
+cd backend
+npm run dev
+```
+- **Endpoints**: `/api/health`, `/api/phones`, `/api/brands`, `/api/search`, `/api/compare`
+
+### 3. Next.js Frontend App (Port 3000)
+```bash
+cd frontend/dordam
+npm run dev
+```
+- **Web App**: Visit `http://localhost:3000`
+
+---
+
+## Architecture at a Glance
 
 ```
 GSMArena  ──scrape──►  output/gsmarena-catalog-latest.json  ──►  catalogService (in-memory)
                                                                         │
 BD stores ──scrape──►  output/<store>-*.json                           ▼
-                                                              Express API (/api/...)
+                                                               Express API (:4000)
                                                                         │
                                                                         ▼
-                                                       Next.js frontend (lib/api.ts)
+                                                       Next.js Frontend (:3000)
+                                                                        ▲
+                                                                        │
+User Query ─────────────────►  FastAPI Hybrid RAG Engine (:8000) ───────┘
 ```
 
-Key design point: **the catalog API reads from a JSON file, not the database.**
-`catalogService` loads `output/gsmarena-catalog-latest.json` into memory and hot-reloads
-it when the file changes. Prisma/Postgres is wired up in the schema but the catalog
-browsing path does not require a database — persistence only activates when
-`DATABASE_URL` is set.
+---
+
+## Hybrid RAG Chat Engine (`api/` & `scripts/`)
+
+Python 3.12 + FastAPI + Chroma Vector DB + SQL Hybrid Search.
+
+- **Intent Classifier**: Identifies 11 core & extended intents (`recommendation`, `comparison`, `price_lookup`, `specification`, `review`, `buying_guide`, `lifecycle_advisory`, `resale_tradein`, `deals_financing`, `mixed`, `general`).
+- **Entity Extractor**: Extracts 25+ structured fields (`brand`, `budget`, `camera`, `gaming`, `battery`, `foldable`, `AI features`, `software support`, `personas`).
+- **Hybrid Router**: Routes queries to SQL filtering or Vector Semantic Search.
+- **Structured Response Schema**: Returns markdown tables, advantages, disadvantages, confidence scores, and store availability.
 
 ---
 
 ## Backend (`backend/`)
 
-Express 5 app. Entry point `src/server.js` → `src/app.js` (app factory, exported
-separately so it can be imported in tests without binding a port).
+Express 5 app. Entry point `src/server.js` → `src/app.js`.
 
-### API surface
+### API Surface
 
-Mounted under `/api` (see [backend/src/routes/index.js](backend/src/routes/index.js)):
+Mounted under `/api`:
 
 | Method | Route                     | Purpose                                        |
 |--------|---------------------------|------------------------------------------------|
 | GET    | `/api/health`             | Health/readiness probe (+ DB status)           |
 | GET    | `/api/catalog/meta`       | Catalog metadata (source, counts, generatedAt) |
 | GET    | `/api/brands`             | Brand list with phone counts                   |
-| GET    | `/api/phones`             | List phones — `search,brand,year,minYear,sort,page,pageSize` |
+| GET    | `/api/phones`             | List phones with filtering & pagination        |
 | GET    | `/api/phones/:slug`       | Phone detail (full spec tables)                |
 | GET    | `/api/search?q=`          | Quick typeahead search                         |
 | GET    | `/api/compare?slugs=a,b,c`| Compare multiple phones                        |
 | GET    | `/api/scrapers`           | List available store scrapers                  |
 | POST   | `/api/scrapers/:store/run`| Run a store scraper                            |
-
-### Layers
-
-- `src/routes/` → `src/controllers/` (thin HTTP) → `src/services/` (logic)
-- `catalogService.js` — the read model powering the browsing API (loads the JSON catalog).
-- `scraperService.js` / `persistenceService.js` — run scrapers, optionally persist to Postgres.
-- `src/scraper/core/` — base classes: `BaseScraper`, `AbstractScraper`, `ApiScraper`,
-  `CheerioScraper`, `Browser` (Playwright).
-- `src/scraper/gsmarena/` — `GsmArenaScraper.js` + `parse.js` (builds the spec catalog).
-- `src/scraper/stores/` — one scraper per BD retailer (StarTech, Gadget & Gear,
-  Diamu, Apple Gadgets, Rio, Kry, Mobile Buzz, etc.), registered in `registry.js`.
-- `src/config/env.js` — single immutable config object from `.env`.
-- `src/middleware/` — request logger, async handler, 404, central error handler.
-
-### Data model (`prisma/schema.prisma`)
-
-Postgres, two tiers:
-- **Tier A (slow-changing specs):** `PhoneModel` → `Phone` variants.
-- **Tier B (market data, ~6h refresh):** `Store`, `StoreRating`, `Listing` (price/stock per store).
-
-### Run it
-
-```bash
-cd backend
-cp .env.example .env          # configure PORT, CORS_ORIGIN, DATABASE_URL (optional), SCRAPER_* knobs
-npm install
-npx playwright install chromium
-
-# 1. Build the phone catalog (writes output/gsmarena-catalog-latest.json)
-node src/gsmarena-cli.js                      # full catalog
-node src/gsmarena-cli.js --brands=apple,samsung --max-models=5   # scoped run
-#   flags: --brands= --max-brands= --max-models= --max-pages= --delay-ms= --no-cache --include-all
-
-# 2. Start the API (defaults to :4000)
-npm run dev                   # nodemon
-npm start                     # plain node
-
-# Other:
-npm run scrape                # store scrapers (src/cli.js)
-npm run prisma:generate
-npm run prisma:migrate
-npm run lint
-```
-
-Note: there is no test runner yet (`npm test` is a placeholder that exits 1).
 
 ---
 
@@ -106,48 +96,20 @@ Note: there is no test runner yet (`npm test` is a placeholder that exits 1).
 
 Next.js **16.2.9** (App Router), React **19**, Tailwind CSS **v4**, TypeScript.
 
-> ⚠️ **This is not the Next.js you may know.** Per
-> [AGENTS.md](frontend/dordam/AGENTS.md), this version has breaking changes vs. older
-> releases. Read the relevant guide in `node_modules/next/dist/docs/` before writing
-> frontend code.
-
 ### Structure
 
-- `app/` — App Router pages: `page.tsx` (landing), `phones/` (list + `[slug]` detail),
-  `brands/`, `compare/`, `finder/`. List/detail are Server Components; interactive
-  pieces (`CompareClient`, `FinderClient`, `PhoneListFilters`) are Client Components.
-- `components/` — `Header`, `Footer`, `PhoneCard`, `SpecTable`, `BrandGrid`,
-  `SearchBox`, `Pagination`.
-- `lib/api.ts` — typed API client. Talks to the backend via
-  `NEXT_PUBLIC_API_BASE` (default `http://localhost:4000/api`).
-
-### Run it
-
-```bash
-cd frontend/dordam
-npm install
-npm run dev                   # http://localhost:3000
-# build/start/lint also available
-```
-
-Set `NEXT_PUBLIC_API_BASE` if the backend isn't on `localhost:4000`.
+- `app/` — App Router pages: `page.tsx` (landing), `phones/`, `brands/`, `compare/`, `finder/`.
+- `components/` — `Header`, `Footer`, `PhoneCard`, `SpecTable`, `BrandGrid`, `SearchBox`.
+- `lib/api.ts` — typed API client configured for backend communications.
 
 ---
 
-## Typical local dev flow
+## Development & Test Commands Summary
 
-1. `cd backend && node src/gsmarena-cli.js --brands=apple --max-models=5` — seed a small catalog.
-2. `cd backend && npm run dev` — API on :4000.
-3. `cd frontend/dordam && npm run dev` — UI on :3000.
-
----
-
-## Repo hygiene notes (for agents)
-
-The working tree currently contains scratch/experiment files that are **not** part of
-the app: `backend/scratch*.js`, `backend/test_*.js`, `backend/find_dataset.js`,
-`backend/import_csv.js`, `backend/seed-mock.js`, `backend/dataset.csv`,
-`output/solution.cpp`, and dated `output/*.json` scrape dumps. Treat these as
-throwaway; the durable code lives under `backend/src/` and `frontend/dordam/`.
-Prefer editing `output/gsmarena-catalog-latest.json` consumers via `catalogService`
-rather than reading the raw dumps.
+| Component | Command | Details |
+| :--- | :--- | :--- |
+| **RAG Service** | `PYTHONPATH=.:scripts python3 -m uvicorn api.main:app --host 0.0.0.0 --port 8000` | Runs RAG chatbot API on `:8000` |
+| **RAG Validation** | `python3 scripts/validate_rag_pipeline.py` | Runs 162-query E2E validation report |
+| **Query Tests** | `pytest tests/query_tests/` | Runs 131 functional domain query tests |
+| **Backend API** | `cd backend && npm run dev` | Runs Express backend API on `:4000` |
+| **Frontend App** | `cd frontend/dordam && npm run dev` | Runs Next.js frontend app on `:3000` |

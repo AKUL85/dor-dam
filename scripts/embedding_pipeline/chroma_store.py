@@ -91,6 +91,16 @@ class ChromaStore:
         result = self._collection.get(ids=[doc_id])
         return bool(result and result.get("ids"))
 
+    def is_doc_unchanged(self, doc_id: str, text: str) -> bool:
+        """Return True when doc_id is in the store and its content hash matches."""
+        import hashlib
+        doc_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        result = self._collection.get(ids=[doc_id], include=["metadatas"])
+        if not result or not result.get("ids"):
+            return False
+        metas = (result.get("metadatas") or [{}])[0]
+        return metas.get("doc_hash") == doc_hash
+
     def _validate_batch(self, records: Sequence[IndexedRecord]) -> None:
         if not records:
             return
@@ -106,13 +116,15 @@ class ChromaStore:
         """Upsert ``records`` into the collection. Returns count added."""
         if not records:
             return 0
+        import hashlib
         self._validate_batch(records)
         ids = [r.id for r in records]
         documents = [r.text for r in records]
         embeddings = [r.embedding for r in records]
         metadatas: list[dict] = []
         for r in records:
-            md = {"embedding_provider": self._cfg.provider.value}
+            doc_hash = hashlib.sha256(r.text.encode("utf-8")).hexdigest()
+            md = {"embedding_provider": self._cfg.provider.value, "doc_hash": doc_hash}
             md.update(r.metadata or {})
             # Chroma requires every metadata value to be str / int / float /
             # bool / None. Coerce anything else defensively.

@@ -157,12 +157,12 @@ class PipelineRunner:
         Returns:
             (added, skipped, failed, embed_seconds, upsert_seconds).
         """
-        # 1. Skip-if-exists filter
+        # 1. Incremental hash check — only process changed or new documents
         pending: list[Document] = []
         skipped = 0
         for doc in batch:
-            if self.store.already_indexed(doc.id):
-                logger.debug("Skipping %s (already indexed)", doc.id)
+            if self.store.is_doc_unchanged(doc.id, doc.text):
+                logger.debug("Skipping %s (unchanged)", doc.id)
                 skipped += 1
             else:
                 pending.append(doc)

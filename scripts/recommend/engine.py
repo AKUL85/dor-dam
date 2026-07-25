@@ -62,8 +62,12 @@ class RecommendationQuery(BaseModel):
             if sf not in raw_priorities:
                 raw_priorities.append(sf)
 
-        # Map general specs fields to supported recommendation priorities
-        # Supported: camera, gaming, battery, performance, display, charging, value
+        SUPPORTED_PRIORITIES = {
+            "camera", "gaming", "battery", "performance", "display", "charging", "value", "budget",
+            "software", "foldable", "compact", "business", "student", "travel", "photography",
+            "durability", "resale", "ecosystem", "accessibility", "content_creator", "ai_features", "ai", "persona"
+        }
+
         priority_mapping = {
             "processor": "performance",
             "ram": "performance",
@@ -72,20 +76,20 @@ class RecommendationQuery(BaseModel):
             "camera": "camera",
             "battery": "battery",
             "charging": "charging",
-            "os": "performance",
+            "os": "software",
             "network": "performance"
         }
 
         mapped_priorities = []
         for p in raw_priorities:
             mapped = priority_mapping.get(p.lower(), p.lower())
-            if mapped in {"camera", "gaming", "battery", "performance", "display", "charging", "value"}:
+            if mapped in SUPPORTED_PRIORITIES:
                 if mapped not in mapped_priorities:
                     mapped_priorities.append(mapped)
 
         if not mapped_priorities and info.priority:
             p_lower = info.priority.lower()
-            if p_lower in {"camera", "gaming", "battery", "performance", "display", "charging", "value"}:
+            if p_lower in SUPPORTED_PRIORITIES:
                 mapped_priorities.append(p_lower)
 
         return cls(
@@ -99,18 +103,40 @@ class RecommendationQuery(BaseModel):
         )
 
 
+class StoreAvailabilityItem(BaseModel):
+    """Store availability listing details for a phone recommendation."""
+    store_name: str
+    price: Optional[float] = None
+    in_stock: bool = True
+    url: Optional[str] = None
+
+
 class RecommendationResult(BaseModel):
-    """A ranked phone recommendation containing detailed score break downs."""
+    """A ranked phone recommendation containing detailed score breakdowns and rich metadata."""
+    # Core API response fields requested
     rank: int
+    phone: str = Field(..., description="Full phone display name (Brand + Model).")
+    price: Optional[float] = Field(None, description="Primary price in BDT.")
+    summary: str = Field("", description="Short summary description.")
+    advantages: List[str] = Field(default_factory=list, description="Key pros.")
+    disadvantages: List[str] = Field(default_factory=list, description="Key cons.")
+    store_availability: List[StoreAvailabilityItem] = Field(default_factory=list, description="List of store availability rows.")
+    official_price: Optional[float] = Field(None, description="Official price in BDT.")
+    unofficial_price: Optional[float] = Field(None, description="Unofficial / imported price in BDT.")
+    why_recommended: str = Field("", description="Detailed explanation of why this phone is recommended.")
+    comparison_score: float = Field(0.0, description="Overall match / comparison score in [0.0, 1.0].")
+    confidence_score: float = Field(0.9, description="Confidence score in [0.0, 1.0].")
+
+    # Backward compatibility fields
     phone_id: int
     brand: str
     name: str
     category: Optional[str] = None
     price_min: Optional[float] = None
     price_max: Optional[float] = None
-    score: float
-    score_breakdown: Dict[str, float]
-    reason: str
+    score: float = 0.0
+    score_breakdown: Dict[str, float] = Field(default_factory=dict)
+    reason: str = ""
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -285,23 +311,52 @@ def generate_reason(phone: Phone, score_breakdown: Dict[str, float], priorities:
 # ──────────────────────────────────────────────────────────────────────
 
 class FilterEngine:
-    """Handles PostgreSQL filtering of phone candidate rows."""
+    """Handles SQL filtering of phone candidate rows using central PhoneRepository."""
 
     @staticmethod
     def filter_candidates(session: Session, query: RecommendationQuery) -> List[Phone]:
-        stmt = select(Phone).where(Phone.price_min > 0)
+        from db.repository import PhoneRepository
+        is_foldable = "foldable" in query.priorities or "fold" in query.query_text.lower()
+        is_5g = "5g" in query.query_text.lower()
+        
+        return PhoneRepository.query_phones(
+            session=session,
+            brand=query.brand,
+            budget_min=query.budget_min,
+            budget_max=query.budget_max,
+            is_foldable=is_foldable,
+            is_5g=is_5g,
+            limit=100
+        )
 
-        # Apply Brand Filter
-        if query.brand:
-            stmt = stmt.where(Phone.brand.ilike(query.brand.strip()))
 
-        # Apply Budget limits
-        if query.budget_max is not None:
-            stmt = stmt.where(Phone.price_min <= query.budget_max)
-        if query.budget_min is not None:
-            stmt = stmt.where(Phone.price_min >= query.budget_min)
+def _extract_advantages_disadvantages(phone: Phone, score_breakdown: Dict[str, float]) -> tuple[List[str], List[str]]:
+    adv: List[str] = []
+    dis: List[str] = []
 
-        return list(session.scalars(stmt).all())
+    if score_breakdown.get("camera", 0) >= 0.7:
+        adv.append("High-resolution camera system with clear optics")
+    if score_breakdown.get("gaming", 0) >= 0.7 or score_breakdown.get("performance", 0) >= 0.7:
+        adv.append("Strong processor performance suitable for heavy gaming and multitasking")
+    if score_breakdown.get("battery", 0) >= 0.7:
+        adv.append("Large battery endurance for all-day usage")
+    if score_breakdown.get("display", 0) >= 0.7:
+        adv.append("Vibrant high refresh rate display")
+    if score_breakdown.get("charging", 0) >= 0.7:
+        adv.append("Fast charging support")
+    if not adv:
+        adv.append("Balanced price-to-performance feature set")
+
+    if score_breakdown.get("charging", 1.0) < 0.5:
+        dis.append("Modest charging speed compared to competitors")
+    if score_breakdown.get("battery", 1.0) < 0.5:
+        dis.append("Smaller battery capacity requiring more frequent charges")
+    if score_breakdown.get("performance", 1.0) < 0.5:
+        dis.append("Entry-level processor suited mainly for casual tasks")
+    if not dis:
+        dis.append("Premium pricing relative to budget alternatives")
+
+    return adv, dis
 
 
 class RankingEngine:
@@ -311,28 +366,50 @@ class RankingEngine:
     def score_and_rank(phones: List[Phone], query: RecommendationQuery) -> List[RecommendationResult]:
         candidates = []
         for phone in phones:
-            score_breakdown = {
-                "camera": score_camera(phone),
-                "gaming": score_gaming(phone),
-                "battery": score_battery(phone),
-                "performance": score_performance(phone),
-                "display": score_display(phone),
-                "charging": score_charging(phone),
-                "value": score_value(phone)
-            }
+            features = PhoneFeatures.from_phone(phone)
+            score_breakdown: Dict[str, float] = {}
 
-            # If specific priorities are requested, base score on those + overall quality
+            # Base baseline scores
+            for prio in ["camera", "gaming", "battery", "performance", "display", "charging", "value"]:
+                sc, _ = score_for(prio, features)
+                score_breakdown[prio] = sc
+
+            # Evaluate requested extended priorities if present
             if query.priorities:
-                priority_score = sum(score_breakdown[p] for p in query.priorities) / len(query.priorities)
+                for prio in query.priorities:
+                    if prio not in score_breakdown:
+                        sc, _ = score_for(prio, features)
+                        score_breakdown[prio] = sc
+
+                valid_prios = [p for p in query.priorities if p in score_breakdown]
+                if valid_prios:
+                    priority_score = sum(score_breakdown[p] for p in valid_prios) / len(valid_prios)
+                else:
+                    priority_score = sum(score_breakdown.values()) / len(score_breakdown)
                 general_score = sum(score_breakdown.values()) / len(score_breakdown)
                 final_score = 0.8 * priority_score + 0.2 * general_score
             else:
-                # All-around performance score
                 final_score = sum(score_breakdown.values()) / len(score_breakdown)
 
             reason = generate_reason(phone, score_breakdown, query.priorities)
+            adv, dis = _extract_advantages_disadvantages(phone, score_breakdown)
+
+            stores_avail: List[StoreAvailabilityItem] = []
+            if hasattr(phone, "stores") and phone.stores:
+                for s in phone.stores:
+                    s_name = getattr(s, "name", None) or getattr(s, "store_name", "Store")
+                    s_price = getattr(s, "price", None)
+                    s_stock = getattr(s, "in_stock", True)
+                    s_url = getattr(s, "url", None)
+                    stores_avail.append(StoreAvailabilityItem(
+                        store_name=s_name,
+                        price=s_price,
+                        in_stock=s_stock,
+                        url=s_url
+                    ))
 
             candidates.append({
+                "phone_obj": phone,
                 "phone_id": phone.id,
                 "brand": phone.brand,
                 "name": phone.name,
@@ -341,7 +418,10 @@ class RankingEngine:
                 "price_max": phone.price_max,
                 "score": final_score,
                 "score_breakdown": score_breakdown,
-                "reason": reason
+                "reason": reason,
+                "advantages": adv,
+                "disadvantages": dis,
+                "stores_avail": stores_avail
             })
 
         # Sort descending by score, ascending by price_min as tie breaker
@@ -349,8 +429,29 @@ class RankingEngine:
 
         results = []
         for rank, cand in enumerate(candidates[:query.limit], 1):
+            p = cand["phone_obj"]
+            summary_text = (
+                f"The {cand['brand']} {cand['name']} is a {cand['category'] or 'mobile phone'} "
+                f"equipped with {p.processor_text or 'capable performance'} and {p.display_text or 'a quality display'}."
+            )
+            official_price = cand["price_min"]
+            unofficial_price = cand["price_max"] if cand["price_max"] and cand["price_max"] != cand["price_min"] else None
+            conf_score = round(min(cand["score"] * 0.85 + 0.15, 1.0), 2)
+
             results.append(RecommendationResult(
                 rank=rank,
+                phone=f"{cand['brand']} {cand['name']}",
+                price=cand["price_min"],
+                summary=summary_text,
+                advantages=cand["advantages"],
+                disadvantages=cand["disadvantages"],
+                store_availability=cand["stores_avail"],
+                official_price=official_price,
+                unofficial_price=unofficial_price,
+                why_recommended=cand["reason"],
+                comparison_score=round(cand["score"], 4),
+                confidence_score=conf_score,
+                # Backward compatibility
                 phone_id=cand["phone_id"],
                 brand=cand["brand"],
                 name=cand["name"],

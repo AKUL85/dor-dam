@@ -75,6 +75,7 @@ class Plan:
 _RUBRIC: dict[IntentType, list[tuple[str, str]]] = {
     IntentType.RECOMMENDATION: [
         ("recommend", "rank candidates by priority + budget"),
+        ("buying_guide", "apply persona guided weights"),
         ("search", "supporting evidence for reasons"),
     ],
     IntentType.COMPARISON: [
@@ -83,6 +84,7 @@ _RUBRIC: dict[IntentType, list[tuple[str, str]]] = {
     ],
     IntentType.SPECIFICATION: [
         ("specs", "spec lookup"),
+        ("search", "vector fallback for unlisted specs"),
     ],
     IntentType.PRICE_LOOKUP: [
         ("pricing", "stores + prices for the named phone"),
@@ -91,6 +93,7 @@ _RUBRIC: dict[IntentType, list[tuple[str, str]]] = {
         ("pricing", "in-stock flag per store"),
     ],
     IntentType.REVIEW: [
+        ("review", "retrieve expert/user ratings and verdict"),
         ("search", "subjective signals from the catalog"),
     ],
     IntentType.MIXED: [
@@ -99,6 +102,21 @@ _RUBRIC: dict[IntentType, list[tuple[str, str]]] = {
     ],
     IntentType.GENERAL: [
         ("search", "no specific engine; recall"),
+    ],
+    IntentType.LIFECYCLE_ADVISORY: [
+        ("future_phones", "lookup launch roadmaps and release timing"),
+        ("buying_guide", "evaluate wait vs buy advisory"),
+        ("search", "search launch news and upgrade guides"),
+    ],
+    IntentType.RESALE_TRADEIN: [
+        ("resale", "calculate second-hand resale valuation and depreciation"),
+        ("pricing", "check trade-in and refurbished store pricing"),
+        ("search", "search refurbished grades and trade-in rules"),
+    ],
+    IntentType.DEALS_FINANCING: [
+        ("deals", "calculate 0% EMI installments and bank offer terms"),
+        ("pricing", "check store deals and warranty options"),
+        ("search", "search promotional campaign policies"),
     ],
 }
 
@@ -170,6 +188,7 @@ def dispatch(
     *,
     session: Session,
     search_engine: SearchEngine,
+    extracted_info: Any = None,
 ) -> DispatchResult:
     """Run each engine in order; collect markdown contexts."""
     out = DispatchResult()
@@ -191,11 +210,9 @@ def dispatch(
                     candidates=result.candidates,
                     hits=[_search_hit_to_out(h) for h in result.hits],
                 )
-                out.vector_context = render_search_markdown(result)
+                out.vector_context += render_search_markdown(result) + "\n\n"
 
             elif step.name == "specs":
-                # Specs needs a phone name. If the query names one we
-                # try to resolve; otherwise we skip silently.
                 from specs.engine import _resolve_phone  # local import
                 phone = _resolve_phone(session, query)
                 if phone is not None:
@@ -228,8 +245,11 @@ def dispatch(
                     )
                     out.sql_context += render_price_md(pr) + "\n\n"
 
-            elif step.name == "recommend":
-                rq = RecommendationQuery(query=query, limit=plan_obj.top_k)
+            elif step.name in ("recommend", "buying_guide"):
+                if extracted_info is not None:
+                    rq = RecommendationQuery.from_extracted(extracted_info, limit=plan_obj.top_k)
+                else:
+                    rq = RecommendationQuery(query_text=query, limit=plan_obj.top_k)
                 results = recommend_eng(rq, session=session)
                 items: list[RecommendItem] = []
                 for idx, r in enumerate(results, start=1):
@@ -239,15 +259,14 @@ def dispatch(
                         name=r.name,
                         brand=r.brand,
                         category=getattr(r, "category", None),
-                        score=r.score,
+                        score=getattr(r, "comparison_score", r.score),
                         score_breakdown=r.score_breakdown,
                         price_min=getattr(r, "price_min", None),
                         price_max=getattr(r, "price_max", None),
-                        reason=r.reason,
+                        reason=getattr(r, "why_recommended", r.reason),
                         vector_hits=[],
                     ))
                 out.recommendation_items = items
-                # Render a compact markdown context from the items.
                 if items:
                     rows = [
                         f"{idx}. {it.name} ({it.brand}) — score {it.score:.2f}"
@@ -257,10 +276,9 @@ def dispatch(
                     out.sql_context += "### Recommendations\n" + "\n".join(rows) + "\n\n"
 
             elif step.name == "compare":
-                # Compare needs ≥2 model names. Best-effort: try the
-                # full query; if the SQL engine can resolve ≥2 phones,
-                # render the comparison table.
                 names = _split_compare_names(query)
+                if extracted_info and getattr(extracted_info, "models", None) and len(extracted_info.models) >= 2:
+                    names = extracted_info.models
                 if len(names) >= 2:
                     cr = compare_eng(names, session=session)
                     from compare import render_markdown as render_compare_md
@@ -277,6 +295,22 @@ def dispatch(
                         )
                         out.sql_context += render_compare_md(cr) + "\n\n"
 
+            elif step.name == "review":
+                sr = search_engine.search(query + " review verdict user rating", top_k=plan_obj.top_k)
+                out.vector_context += render_search_markdown(sr) + "\n\n"
+
+            elif step.name == "future_phones":
+                sr = search_engine.search(query + " launch roadmap upcoming release", top_k=plan_obj.top_k)
+                out.vector_context += render_search_markdown(sr) + "\n\n"
+
+            elif step.name == "resale":
+                sr = search_engine.search(query + " resale value trade-in second hand price", top_k=plan_obj.top_k)
+                out.vector_context += render_search_markdown(sr) + "\n\n"
+
+            elif step.name == "deals":
+                sr = search_engine.search(query + " EMI bank offer discount price deal", top_k=plan_obj.top_k)
+                out.vector_context += render_search_markdown(sr) + "\n\n"
+
         except Exception as exc:  # noqa: BLE001
             logger.warning("engine %s failed: %s", step.name, exc,
                            extra={"engine": step.name})
@@ -292,8 +326,7 @@ def _split_compare_names(query: str) -> list[str]:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# Final-answer composition (no LLM call yet — uses ``prompts/system.md``
-# skeleton so the API is testable offline)
+# Final-answer composition
 # ──────────────────────────────────────────────────────────────────────
 
 def compose_final_answer(
@@ -301,11 +334,7 @@ def compose_final_answer(
     intent: IntentType,
     dispatch_result: DispatchResult,
 ) -> str:
-    """Render a deterministic final answer from the dispatched contexts.
-
-    When an LLM is configured, swap this function for a renderer that
-    uses ``prompts/system.md``; the input shape stays the same.
-    """
+    """Render a deterministic final answer from the dispatched contexts."""
     if dispatch_result.sql_context or dispatch_result.vector_context:
         sections: list[str] = []
         sections.append(f"### {intent.value.title()} — answer")
@@ -331,7 +360,6 @@ def run_search(req: SearchRequest, *, search_engine: SearchEngine) -> SearchResp
     where = req.where or None
     where_expr = req.where_expr or None
     if where_expr:
-        # Convert {key: {"$lte": 50000}} → Chroma where with $and merge.
         clauses: list[dict[str, Any]] = []
         if where:
             clauses.append(where)
@@ -378,8 +406,6 @@ def run_recommend(
     log.info("recommend produced %d candidates", len(results))
 
     if req.use_vector_fallback and not results:
-        # Fall back to semantic recall so the API still returns
-        # something useful when SQL filtering is too strict.
         log.info("falling back to vector search")
         sr = search_engine.search(req.query, top_k=req.limit)
         return RecommendResponse(
@@ -406,11 +432,11 @@ def run_recommend(
             name=r.name,
             brand=r.brand,
             category=r.category,
-            score=r.score,
+            score=getattr(r, "comparison_score", r.score),
             score_breakdown=r.score_breakdown,
             price_min=r.price_min,
             price_max=r.price_max,
-            reason=r.reason,
+            reason=getattr(r, "why_recommended", r.reason),
             vector_hits=[],
         ))
     return RecommendResponse(query=req.query, count=len(items), items=items)
@@ -467,8 +493,24 @@ def run_chat(
     search_engine: SearchEngine,
     log: BoundLogger,
     request_id: str,
-) -> tuple[str, str]:
-    """End-to-end /chat: classify → plan → dispatch → compose."""
+) -> tuple[str, str, Any, DispatchResult]:
+    """End-to-end /chat: Scope Guard → classify → plan → dispatch → compose."""
+    from domain_guard import get_scope_guard, ScopeCategory
+    scope_guard = get_scope_guard()
+    scope_res = scope_guard.classify(req.message)
+
+    if not scope_res.is_phone_domain():
+        log.info("scope_guard non-phone category=%s reason=%s", scope_res.category.value, scope_res.reason)
+        dummy_dispatched = DispatchResult()
+        dummy_dispatched.engines_called = ["scope_guard"]
+        extracted_dict = {
+            "intent": scope_res.category.value,
+            "scope_category": scope_res.category.value,
+            "confidence": scope_res.confidence,
+            "reason": scope_res.reason,
+        }
+        return scope_res.response_text or "", scope_res.category.value, extracted_dict, dummy_dispatched
+
     classifier = get_default_classifier()
     extracted = classifier.classify(req.message)
     intent = IntentType(extracted.intent) if not isinstance(extracted.intent, IntentType) \
@@ -477,6 +519,8 @@ def run_chat(
              intent.value, getattr(extracted, "confidence", None))
 
     p = plan(req.message, intent, top_k=req.top_k)
-    dispatched = dispatch(req.message, p, session=session, search_engine=search_engine)
+    dispatched = dispatch(
+        req.message, p, session=session, search_engine=search_engine, extracted_info=extracted
+    )
     answer = compose_final_answer(req.message, intent, dispatched)
-    return answer, intent.value
+    return answer, intent.value, extracted, dispatched

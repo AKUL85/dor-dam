@@ -39,6 +39,14 @@ class IntentType(str, Enum):
     REVIEW = "review"
     GENERAL = "general"
     MIXED = "mixed"
+    # Extended intents for new capabilities
+    LIFECYCLE_ADVISORY = "lifecycle_advisory"
+    RESALE_TRADEIN = "resale_tradein"
+    DEALS_FINANCING = "deals_financing"
+
+
+
+from entity_extractor import ExtractedEntities, EntityExtractor
 
 
 class ExtractedInfo(BaseModel):
@@ -84,6 +92,10 @@ class ExtractedInfo(BaseModel):
         default_factory=list, 
         description="Specific spec fields the user is interested in."
     )
+    entities: Optional[ExtractedEntities] = Field(
+        None,
+        description="Comprehensive structured entities extracted from query."
+    )
     raw_query: str = Field(
         ..., 
         description="The original user query."
@@ -118,24 +130,29 @@ BRAND_PREFIX_MAP = {
 }
 
 PRIORITY_MAP = {
-    "camera": ["camera", "photo", "photography", "selfie", "lens", "video", "recording", "zoom", "megapixel", "mp"],
-    "gaming": ["gaming", "game", "pubg", "freefire", "lag-free", "gpu", "graphics"],
-    "battery": ["battery", "backup", "charging", "charger", "mah", "life"],
-    "display": ["display", "screen", "amoled", "refresh rate", "hz", "oled", "brightness", "size"],
-    "storage": ["storage", "rom", "space", "memory"],
-    "build": ["build", "look", "design", "color", "pretty", "beautiful", "thin", "lightweight", "durable", "waterproof", "ip68", "ip67", "glass", "armor"],
-    "value": ["cheap", "value", "affordable", "cheapest", "low cost"]
+    "camera": ["camera", "photo", "photography", "selfie", "lens", "video", "recording", "zoom", "megapixel", "mp", "vlogging", "vlog", "telephoto", "low-light", "night", "prores", "raw"],
+    "gaming": ["gaming", "game", "pubg", "freefire", "lag-free", "gpu", "graphics", "antutu", "cooling", "triggers"],
+    "battery": ["battery", "backup", "charging", "charger", "mah", "life", "standby", "silicon-carbon"],
+    "display": ["display", "screen", "amoled", "refresh rate", "hz", "oled", "brightness", "size", "curved", "pwm"],
+    "storage": ["storage", "rom", "space", "memory", "expandable", "sd card"],
+    "build": ["build", "look", "design", "color", "pretty", "beautiful", "thin", "lightweight", "durable", "waterproof", "ip68", "ip67", "glass", "armor", "rugged", "titanium", "compact", "matte"],
+    "value": ["cheap", "value", "affordable", "cheapest", "low cost", "value-for-money"],
+    "ai": ["ai", "galaxy ai", "gemini", "apple intelligence", "magic eraser", "translation", "on-device ai", "artificial intelligence"],
+    "connectivity": ["esim", "isim", "wifi 7", "wi-fi 7", "satellite", "uwb", "roaming", "5g"],
+    "audio": ["stereo speakers", "dolby atmos", "headphone jack", "3.5mm", "mic quality", "musician"],
+    "foldable": ["foldable", "fold", "flip", "hinge", "crease"],
+    "persona": ["student", "students", "business", "elderly", "senior", "kids", "vlogger", "content creator", "photographer", "musician", "driver", "trading", "freelancer", "e-commerce"]
 }
 
 SPEC_KEYWORDS = {
     "processor": ["processor", "cpu", "chipset", "soc", "snapdragon", "exynos", "mediatek", "helio", "dimensity", "bionic", "tensor"],
     "ram": ["ram", "memory"],
-    "storage": ["storage", "rom", "internal"],
-    "display": ["display", "screen", "amoled", "oled", "lcd", "refresh rate", "hz", "resolution"],
-    "camera": ["camera", "megapixels", "mp", "selfie", "lens", "zoom", "sensor"],
-    "battery": ["battery", "mah", "charging", "charger"],
-    "os": ["os", "android", "ios", "operating system"],
-    "network": ["network", "5g", "4g", "lte", "sim"],
+    "storage": ["storage", "rom", "internal", "expandable", "sd card"],
+    "display": ["display", "screen", "amoled", "oled", "lcd", "refresh rate", "hz", "resolution", "curved", "pwm"],
+    "camera": ["camera", "megapixels", "mp", "selfie", "lens", "zoom", "sensor", "telephoto", "ois", "vlogging", "prores", "raw"],
+    "battery": ["battery", "mah", "charging", "charger", "wireless charging", "silicon-carbon", "standby"],
+    "os": ["os", "android", "ios", "operating system", "update", "updates", "bloatware", "clean android"],
+    "network": ["network", "5g", "4g", "lte", "sim", "esim", "isim", "wifi 7", "satellite", "uwb"],
 }
 
 
@@ -329,30 +346,30 @@ class RuleBasedClassifier(BaseIntentClassifier):
 
         intent_scores = {intent: 0 for intent in IntentType}
 
-        # Rules for recommendation (only triggered by priority if no model is specified)
-        rec_kws = ["best", "recommend", "suggest", "suggestion", "good", "top", "pick", "buy", "purchase", "choose"]
+        # Rules for recommendation
+        rec_kws = ["best", "recommend", "suggest", "suggestion", "good", "top", "pick", "purchase", "choose"]
+        if "where to buy" not in q and "where can i buy" not in q:
+            rec_kws.append("buy")
         if has_word(q, rec_kws) or budget_max is not None or budget_min is not None or (priority is not None and not models):
-            intent_scores[IntentType.RECOMMENDATION] += 2
+            intent_scores[IntentType.RECOMMENDATION] += 3 if has_word(q, rec_kws) else 2
 
         # Rules for comparison
         comp_kws = ["vs", "versus", "compare", "comparison", "difference", "better", "alternative"]
         if has_word(q, comp_kws) or len(models) >= 2 or len(brands) >= 2:
-            intent_scores[IntentType.COMPARISON] += 3
+            intent_scores[IntentType.COMPARISON] += 4 if has_word(q, comp_kws) else 3
 
-        # Rules for price lookup
-        price_kws = ["price", "cost", "how much", "tk", "taka", "bdt", "rate", "worth", "cheap"]
-        if has_word(q, price_kws):
+        # Rules for price lookup (currency words alone when budget is present do not count as price lookup)
+        explicit_price_kws = ["price", "cost", "how much", "rate", "worth"]
+        if has_word(q, explicit_price_kws) or (has_word(q, ["tk", "taka", "bdt", "cheap"]) and budget_max is None):
             intent_scores[IntentType.PRICE_LOOKUP] += 2
 
-        # Rules for availability
-        avail_kws = ["available", "stock", "in stock", "buy", "where to buy", "shop", "store", "delivery"]
-        if has_word(q, avail_kws):
-            intent_scores[IntentType.AVAILABILITY] += 2
+        # Rules for availability ("where to buy" is availability, but plain "buy" is recommendation)
+        avail_kws = ["available", "stock", "in stock", "where to buy", "shop", "store", "delivery"]
+        if has_word(q, avail_kws) or "where to buy" in q:
+            intent_scores[IntentType.AVAILABILITY] += 3 if "where to buy" in q or "in stock" in q else 2
 
         # Rules for specifications
         spec_kws = ["spec", "specs", "specification", "specifications", "feature", "features", "details"]
-        # Only trigger specification intent if explicitly requested or if we found spec fields
-        # and it isn't overshadowed by strong recommendation/comparison signals
         if has_word(q, spec_kws) or (spec_fields and not (has_word(q, rec_kws) or budget_max is not None)):
             intent_scores[IntentType.SPECIFICATION] += 2
 
@@ -360,6 +377,21 @@ class RuleBasedClassifier(BaseIntentClassifier):
         rev_kws = ["review", "verdict", "rating", "opinion", "worth buying", "good or bad", "pros and cons", "experience"]
         if has_word(q, rev_kws):
             intent_scores[IntentType.REVIEW] += 3
+
+        # Rules for lifecycle advisory
+        lifecycle_kws = ["upcoming", "launch in", "launching", "wait or buy", "should i wait", "upgrade from", "next flagship", "future phone", "upcoming phones", "release date", "launch date"]
+        if has_word(q, lifecycle_kws) or ("wait" in q and "buy" in q) or ("upgrade" in q and "year" in q) or "upcoming" in q:
+            intent_scores[IntentType.LIFECYCLE_ADVISORY] += 5
+
+        # Rules for resale & trade-in
+        resale_kws = ["resale", "resale value", "refurbished", "pre-owned", "pre owned", "trade-in", "trade in", "exchange old", "second hand", "used phone", "depreciation", "sell old"]
+        if has_word(q, resale_kws) or "resale" in q or "trade-in" in q or "refurbished" in q or "pre-owned" in q:
+            intent_scores[IntentType.RESALE_TRADEIN] += 4
+
+        # Rules for deals & financing
+        deals_kws = ["emi", "installment", "installments", "warranty", "after-sales", "after sales", "eid sale", "black friday", "daraz sale", "discount", "deal", "deals", "offer", "offers", "bank offer"]
+        if has_word(q, deals_kws):
+            intent_scores[IntentType.DEALS_FINANCING] += 4
 
         # Rules for general conversational greetings
         gen_kws = ["hello", "hi", "hey", "greetings", "who are you", "what can you do", "help", "thank", "thanks"]
@@ -377,14 +409,9 @@ class RuleBasedClassifier(BaseIntentClassifier):
             
             if len(sorted_intents) > 1:
                 second_intent, second_score = sorted_intents[1]
-                # If top two intents are equal, or very close and we have many intents, flag as Mixed
-                if top_score == second_score or (top_score - second_score <= 1 and len(active_intents) >= 3):
-                    # Mixed requires at least 2 distinct intents with a score >= 2
-                    high_scores = [score for intent, score in sorted_intents if score >= 2]
-                    if len(high_scores) >= 2:
-                        primary_intent = IntentType.MIXED
-                    else:
-                        primary_intent = top_intent
+                # Flag as Mixed only if top two intents are equal and both >= 2
+                if top_score == second_score and top_score >= 2:
+                    primary_intent = IntentType.MIXED
                 else:
                     primary_intent = top_intent
             else:
@@ -403,9 +430,13 @@ class RuleBasedClassifier(BaseIntentClassifier):
         primary_brand = brands[0] if brands else None
         primary_model = models[0] if models else None
 
+        # Extract comprehensive domain entities
+        extracted_entities = EntityExtractor().extract(query)
+
         metadata = {
             "all_extracted_intents": [intent.value for intent in active_intents],
-            "scores": {k.value: v for k, v in intent_scores.items() if v > 0}
+            "scores": {k.value: v for k, v in intent_scores.items() if v > 0},
+            "entities": extracted_entities.to_dict()
         }
 
         return ExtractedInfo(
@@ -418,6 +449,7 @@ class RuleBasedClassifier(BaseIntentClassifier):
             model=primary_model,
             models=models,
             spec_fields=spec_fields,
+            entities=extracted_entities,
             raw_query=query,
             confidence=confidence,
             metadata=metadata
@@ -431,7 +463,7 @@ class LLMBasedClassifier(BaseIntentClassifier):
         "You are an NLU classifier for a mobile phone finder service in Bangladesh.\n"
         "Analyze the user query, classify its primary intent, and extract structural information.\n"
         "Intents must be one of: 'recommendation', 'comparison', 'price_lookup', 'availability', "
-        "'specification', 'review', 'general', 'mixed'.\n"
+        "'specification', 'review', 'general', 'mixed', 'lifecycle_advisory', 'resale_tradein', 'deals_financing'.\n"
         "Convert budget shortcuts like '35k' or '30 thousand' to absolute numeric values in BDT (e.g. 35000).\n"
         "Return a valid JSON object matching the requested schema."
     )
@@ -471,7 +503,7 @@ class LLMBasedClassifier(BaseIntentClassifier):
             "properties": {
                 "intent": {
                     "type": "STRING",
-                    "enum": ["recommendation", "comparison", "price_lookup", "availability", "specification", "review", "general", "mixed"]
+                    "enum": ["recommendation", "comparison", "price_lookup", "availability", "specification", "review", "general", "mixed", "lifecycle_advisory", "resale_tradein", "deals_financing"]
                 },
                 "budget": {"type": "NUMBER"},
                 "budget_min": {"type": "NUMBER"},
@@ -533,7 +565,7 @@ class LLMBasedClassifier(BaseIntentClassifier):
                 "properties": {
                     "intent": {
                         "type": "string",
-                        "enum": ["recommendation", "comparison", "price_lookup", "availability", "specification", "review", "general", "mixed"]
+                        "enum": ["recommendation", "comparison", "price_lookup", "availability", "specification", "review", "general", "mixed", "lifecycle_advisory", "resale_tradein", "deals_financing"]
                     },
                     "budget": {"type": ["number", "null"]},
                     "budget_min": {"type": ["number", "null"]},
